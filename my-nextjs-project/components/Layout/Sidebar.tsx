@@ -89,7 +89,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
 
 
   return (
-    <aside className="g-scroll text-white ps-1 position-relative">
+    <aside className="g-scroll text-white px-3 position-relative">
       <button className="sidebar_switch_icon">
         <svg width="20" height="36" viewBox="0 0 20 36" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.5 3L17.5 18L2.5 33" stroke="black" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />

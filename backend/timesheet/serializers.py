@@ -1,32 +1,58 @@
+from rest_framework import serializers
+from .models import TimeRequest
+
+from django.db import models
+from django.conf import settings
+from datetime import datetime, date, timedelta
+
+from projects.models import Project
+from tasks.models import Task
 
 # timesheet/serializers.py
-from rest_framework import serializers
-from .models import TimeEntry
 
-class TimeEntrySerializer(serializers.ModelSerializer):
-    project = serializers.CharField(source="project.name", read_only=True)
-    task = serializers.CharField(source="task.title", read_only=True)
-    project_id = serializers.PrimaryKeyRelatedField(
-        queryset=TimeEntry._meta.get_field('project').related_model.objects.all(),
-        source="project", write_only=True
-    )
-    task_id = serializers.PrimaryKeyRelatedField(
-        queryset=TimeEntry._meta.get_field('task').related_model.objects.all(),
-        source="task", write_only=True
-    )
+from rest_framework import serializers
+from .models import TimeRequest, Notification
+
+class TimeRequestSerializer(serializers.ModelSerializer):
+    # Nested read‑only fields for display
+    user = serializers.StringRelatedField(read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
+    task_title   = serializers.CharField(source="task.title",   read_only=True)
 
     class Meta:
-        model = TimeEntry
+        model = TimeRequest
         fields = [
-            'id', 'user', 'project', 'task', 'project_id', 'task_id',
-            'date', 'start_time', 'end_time', 'activity_description',
-            'created_at', 'updated_at'
+            "id",
+            "user",
+            "project",      # still accept integer FK on write
+            "project_name",
+            "task",         # integer FK on write
+            "task_title",
+            "date",
+            "time_from",
+            "time_to",
+            "requested_duration",
+            "description",
+            "status",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['id', 'user', 'project', 'task', 'created_at', 'updated_at']
+        read_only_fields = (
+            "user",
+            "requested_duration",
+            "created_at",
+            "updated_at",
+        )
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        user = request.user if request and not request.user.is_anonymous else None
-        validated_data['user'] = user
+        # attach the requesting user
+        validated_data["user"] = self.context["request"].user
         return super().create(validated_data)
-    
+
+class NotificationSerializer(serializers.ModelSerializer):
+    time_request_id = serializers.IntegerField(source="time_request.id", read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = ["id", "time_request_id", "verb", "created_at", "is_read"]
+        read_only_fields = ["id", "time_request_id", "verb", "created_at"]

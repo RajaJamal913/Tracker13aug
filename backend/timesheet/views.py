@@ -1,42 +1,68 @@
 # timesheet/views.py
-from rest_framework import generics, permissions
-from .models import TimeEntry
-from .serializers import TimeEntrySerializer
-from rest_framework.exceptions import PermissionDenied
+from django.db.models import Q
+from rest_framework import viewsets, permissions, filters, status
+from rest_framework.response import Response
+from .models import TimeRequest, Notification
+from .serializers import TimeRequestSerializer, NotificationSerializer
 
-class TimeEntryListCreateView(generics.ListCreateAPIView):
+class TimeRequestViewSet(viewsets.ModelViewSet):
     """
-    GET  /api/addtime/      → list current user's entries (auth required)
-    POST /api/addtime/      → create new entry (auth required)
+    - Regular users may CREATE & LIST only their own requests.
+    - Project owners (staff or owner) may PATCH status to APPROVED/REJECTED.
     """
-    queryset = TimeEntry.objects.select_related('project', 'task', 'user')
-    serializer_class = TimeEntrySerializer
+    queryset = TimeRequest.objects.all()
+    serializer_class = TimeRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["status", "project__name", "task__title"]
+    ordering_fields = ["created_at", "date"]
 
     def get_queryset(self):
         user = self.request.user
-        if not user or not user.is_authenticated:
-            # Anonymous users see no entries
-            return TimeEntry.objects.none()
-        return self.queryset.filter(user=user)
+        qs = super().get_queryset()
+        if user.is_staff:
+            return qs
+        # use Q directly
+        return qs.filter(
+            Q(user=user) |
+            Q(project__created_by=user)
+        )
 
-    def perform_create(self, serializer):
-        # Only allow creation by authenticated users
-        user = self.request.user
-        if not user or not user.is_authenticated:
-            raise PermissionDenied("Authentication required to create time entries.")
-        serializer.save(user=user)
+    def create(self, request, *args, **kwargs):
+        # on create, serializer.create will attach .user
+        return super().create(request, *args, **kwargs)
 
-class TimeEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = TimeEntry.objects.select_related('project', 'task', 'user')
-    serializer_class = TimeEntrySerializer
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Only allow patching `status` to APPROVED/REJECTED by the project owner.
+        When status changes, mark related Notification as read.
+        """
+        instance = self.get_object()
+        user = request.user
+
+        # only the project owner (or staff) may change status
+        if instance.project.created_by != user and not user.is_staff:
+            return Response({"detail":"Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        old_status = instance.status
+        new_status = serializer.validated_data.get("status", old_status)
+        self.perform_update(serializer)
+
+        # if status really changed, mark the original notification read
+        if new_status != old_status:
+            Notification.objects.filter(time_request=instance).update(is_read=True)
+
+        return Response(serializer.data)
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    Users can list and mark their notifications as read.
+    """
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_object(self):
-        obj = super().get_object()
-        if obj.user != self.request.user:
-            raise PermissionDenied("Cannot access entries of another user.")
-        return obj
-    
-
-
+    def get_queryset(self):
+        return Notification.objects.filter(recipient=self.request.user)

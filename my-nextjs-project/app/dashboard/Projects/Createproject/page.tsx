@@ -8,10 +8,6 @@ import { ChevronDown, Folder, Plus } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 import { FiLayers } from "react-icons/fi";
 import Link from "next/link";
-<Script
-  src="/_next/static/chunks/bootstrap/dist/js/bootstrap.bundle.min.js"
-  strategy="afterInteractive"
-/>
 
 interface Member {
   id: number;

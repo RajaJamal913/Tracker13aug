@@ -10,6 +10,11 @@
   --theme-color-secondary: #4a87ff;
   --theme-shadow: box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
 }
+.card_bg_grad {
+    background: linear-gradient(#9447f2 0%, #602e9d 100%);
+    box-shadow: 0 2px 16px #d7ceff;
+    border-radius: 20px;
+}
 
 @theme inline {
   --color-background: var(--background);

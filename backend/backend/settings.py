@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'realtimemonitoring',
     'tracker',
     'leave',
-    'shifts'
+    'shifts',
+    'reports',
  
 ]
 import os 

@@ -12,7 +12,7 @@ const BreakButton = () => {
   return (
     <div className="tracker-btn-wrapper">
       <button className="btn track-btn" onClick={toggleBreak}>
-        <div className="track-txt">{isOnBreak ? 'End Break' : 'Start Break'}</div>
+        <div className="track-txt">{isOnBreak ? 'End Tracker' : 'Tracker'}</div>
         <div className="icon-wrap">
           <span className={`icon-start ${isOnBreak ? 'd-none' : ''}`}>
             {/* ▶️ Start Icon */}

@@ -1,4 +1,3 @@
-
 // components/Header.tsx
 "use client";
 
@@ -9,6 +8,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import BreakButton from "@/components/trackerbtn";
 import NotificationDropdown from "@/components/NotificationDropdown";
+// wherever your file lives, adjust the path accordingly
+import StartTracker from '@/components/StartTracker';
 
 export default function Header() {
   const [username, setUsername] = useState<string>("Loading...");
@@ -29,100 +30,117 @@ export default function Header() {
   };
 
   return (
-
-    
     <header id="header" className="header d-flex align-items-center">
       <div className="header-inner">
-              {/* Logo/Sidebar toggle could go here */}
-<div className="welcome-wrapper-main d-flex align-items-center gap-2">
-<BreakButton/>
-<div className="d-flex align-items-center gap-2">
-<div className="header-welcome-wrapper">
- <Image src="/assets/images/header-user-icon.png" alt="Messages" width={24} height={24} />
- 
-</div>
-
-  <div className="designation-wrapper d-flex align-items-center gap-2">
-   <span className="user-name">Hamza</span>:
- <span className="user-designation">Admin</span>
- </div>
- </div>
-</div>
-      <nav className="header-nav ms-auto">
-        <ul className="d-flex align-items-center list-unstyled m-0">
-
-          {/* Notification Bell (dynamic) */}
-          <NotificationDropdown />
-
-          {/* Messages Dropdown (static placeholder) */}
-          <li className="nav-item dropdown ms-3">
-            <Link href="#" className="nav-link nav-icon h-chat-wrap" data-bs-toggle="dropdown">
-              <Image src="/assets/images/h-chat-icon-new.png" alt="Messages" width={24} height={24} />
-              <span className="badge bg-success badge-number">3</span>
-            </Link>
-            <ul className="dropdown-menu dropdown-menu-end dropdown-menu-arrow messages">
-              <li className="dropdown-header">
-                You have 3 new messages
-                <Link href="#">
-                  <span className="badge rounded-pill bg-primary ms-2 p-2">View all</span>
-                </Link>
-              </li>
-              <li><hr className="dropdown-divider" /></li>
-              {/* TODO: map message items here */}
-              <li className="dropdown-footer">
-                <Link href="#">Show all messages</Link>
-              </li>
-            </ul>
-          </li>
-
-          {/* Profile Dropdown */}
-          <li className="nav-item dropdown ms-3">
-            <Link
-              href="#"
-              className="nav-link nav-profile d-flex align-items-center"
-              data-bs-toggle="dropdown"
-            >
+        {/* Logo/Sidebar toggle could go here */}
+        <div className="welcome-wrapper-main d-flex align-items-center gap-2">
+            <StartTracker />
+          <div className="d-flex align-items-center gap-2">
+            <div className="header-welcome-wrapper">
               <Image
-                src="/assets/images/profile-img.jpg"
-                alt="Profile"
-                width={32}
-                height={32}
-                className="rounded-circle"
+                src="/assets/images/header-user-icon.png"
+                alt="User Icon"
+                width={24}
+                height={24}
               />
-              <span className="ms-2">{username}</span>
-            </Link>
-            <ul className="dropdown-menu dropdown-menu-end dropdown-menu-arrow profile">
-              <li className="dropdown-header">
-                <h6>{username}</h6>
-                <span>Member</span>
-              </li>
-              <li><hr className="dropdown-divider" /></li>
-              <li>
-                <Link href="/profile" className="dropdown-item d-flex align-items-center">
-                  <i className="bi bi-person me-2"></i>
-                  <span>My Profile</span>
-                </Link>
-              </li>
-              <li><hr className="dropdown-divider" /></li>
-              <li>
-                <button
-                  onClick={handleLogout}
-                  className="dropdown-item d-flex align-items-center bg-transparent border-0"
-                >
-                  <i className="bi bi-box-arrow-right me-2"></i>
-                  <span>Sign Out</span>
-                </button>
-              </li>
-            </ul>
-          </li>
+            </div>
 
+            <div className="designation-wrapper d-flex align-items-center gap-2">
+              <span className="user-name">{username}</span>
+            
+            </div>
+          </div>
+        </div>
 
-          <li></li>
-        </ul>
-      </nav>
+        <nav className="header-nav ms-auto">
+          <ul className="d-flex align-items-center list-unstyled m-0">
+            {/* Notification Bell (dynamic) */}
+            <NotificationDropdown />
+
+            {/* Messages Dropdown (static placeholder) */}
+            <li className="nav-item dropdown ms-3">
+              <Link
+                href="#"
+                className="nav-link nav-icon h-chat-wrap"
+                data-bs-toggle="dropdown"
+              >
+                <Image
+                  src="/assets/images/h-chat-icon-new.png"
+                  alt="Messages"
+                  width={24}
+                  height={24}
+                />
+                <span className="badge bg-success badge-number">3</span>
+              </Link>
+              <ul className="dropdown-menu dropdown-menu-end dropdown-menu-arrow messages">
+                <li className="dropdown-header">
+                  You have 3 new messages
+                  <Link href="#">
+                    <span className="badge rounded-pill bg-primary ms-2 p-2">
+                      View all
+                    </span>
+                  </Link>
+                </li>
+                <li>
+                  <hr className="dropdown-divider" />
+                </li>
+                {/* TODO: map message items here */}
+                <li className="dropdown-footer">
+                  <Link href="#">Show all messages</Link>
+                </li>
+              </ul>
+            </li>
+
+            {/* Profile Dropdown */}
+            <li className="nav-item dropdown ms-3">
+              <Link
+                href="#"
+                className="nav-link nav-profile d-flex align-items-center"
+                data-bs-toggle="dropdown"
+              >
+                <Image
+                  src="/assets/images/profile-img.jpg"
+                  alt="Profile"
+                  width={32}
+                  height={32}
+                  className="rounded-circle"
+                />
+                <span className="ms-2">{username}</span>
+              </Link>
+              <ul className="dropdown-menu dropdown-menu-end dropdown-menu-arrow profile">
+                <li className="dropdown-header">
+                  <h6>{username}</h6>
+                  <span>Member</span>
+                </li>
+                <li>
+                  <hr className="dropdown-divider" />
+                </li>
+                <li>
+                  <Link
+                    href="/profile"
+                    className="dropdown-item d-flex align-items-center"
+                  >
+                    <i className="bi bi-person me-2"></i>
+                    <span>My Profile</span>
+                  </Link>
+                </li>
+                <li>
+                  <hr className="dropdown-divider" />
+                </li>
+                <li>
+                  <button
+                    onClick={handleLogout}
+                    className="dropdown-item d-flex align-items-center bg-transparent border-0"
+                  >
+                    <i className="bi bi-box-arrow-right me-2"></i>
+                    <span>Sign Out</span>
+                  </button>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </nav>
       </div>
-
     </header>
   );
 }
-

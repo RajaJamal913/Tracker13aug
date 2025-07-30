@@ -1,113 +1,114 @@
 # realtimemonitoring/views.py
 from django.utils import timezone
-
-from rest_framework import permissions, status,generics
+from rest_framework import permissions, status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import  BreakPolicy, BreakSession, WorkSession
-from .serializers import  WorkSessionStatusSerializer,BreakPolicySerializer,BreakSessionStatusSerializer
-from projects.models import Member
+from .models import BreakPolicy, BreakSession, WorkSession
+from .serializers import (
+    WorkSessionStatusSerializer,
+    BreakPolicySerializer,
+    BreakSessionStatusSerializer,
+)
+from projects.models import Member, Project
+from django.shortcuts import get_object_or_404
+from datetime import date
 
 
 class MonitorStatusView(APIView):
     """
-    GET /api/monitor/status/
-    Returns the authenticated user’s current WorkSession (creating one if needed).
+    GET /api/monitor/status/?project=<id>
+    Returns the user's current WorkSession for a given project (creating one if needed).
     """
     permission_classes = [permissions.IsAuthenticated]
-    # Because we want to make sure only logged‑in users hit this.
 
     def get(self, request):
-        # 1) Find the Member record for this User.
-        try:
-            member = Member.objects.get(user__username=request.user.username)
-        except Member.DoesNotExist:
-            return Response(
-                {"detail": "No Member record found for user."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        project_id = request.query_params.get('project')
+        project = get_object_or_404(Project, pk=project_id)
+        member = get_object_or_404(Member, user=request.user)
 
-        # 2) get_or_create the WorkSession for that Member.
-        session, _ = WorkSession.objects.get_or_create(member=member)
+        # get_or_create without invalid defaults
+        session, created = WorkSession.objects.get_or_create(
+            member=member,
+            project=project,
+        )
+        if created:
+            # initialize the newly created session
+            session.restart()
+
         data = WorkSessionStatusSerializer(session).data
         return Response(data, status=status.HTTP_200_OK)
 
 
 class MonitorStartView(APIView):
     """
-    POST /api/monitor/start/
-    (Re)starts the authenticated user’s WorkSession.
+    POST /api/monitor/start/?project=<id>
+    Starts or restarts a WorkSession for the given project.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        try:
-            member = Member.objects.get(user__username=request.user.username)
-        except Member.DoesNotExist:
-            return Response(
-                {"detail": "No Member record found for user."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        project_id = request.data.get('project') or request.query_params.get('project')
+        project = get_object_or_404(Project, pk=project_id)
+        member = get_object_or_404(Member, user=request.user)
 
-        session, _ = WorkSession.objects.get_or_create(member=member)
+        # get_or_create, then restart
+        session, _ = WorkSession.objects.get_or_create(
+            member=member,
+            project=project,
+        )
         session.restart()
+
         data = WorkSessionStatusSerializer(session).data
         return Response(data, status=status.HTTP_200_OK)
 
 
 class MonitorStopView(APIView):
     """
-    POST /api/monitor/stop/
-    Pauses the authenticated user’s WorkSession.
+    POST /api/monitor/stop/?project=<id>
+    Stops (pauses) the WorkSession for the given project.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        try:
-            member = Member.objects.get(user__username=request.user.username)
-        except Member.DoesNotExist:
-            return Response(
-                {"detail": "No Member record found for user."},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        project_id = request.data.get('project') or request.query_params.get('project')
+        project = get_object_or_404(Project, pk=project_id)
+        member = get_object_or_404(Member, user=request.user)
 
-        try:
-            session = WorkSession.objects.get(member=member)
-        except WorkSession.DoesNotExist:
-            return Response(
-                {"detail": "No active session to stop."},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
+        session = get_object_or_404(WorkSession, member=member, project=project)
         session.stop()
+
         data = WorkSessionStatusSerializer(session).data
         return Response(data, status=status.HTTP_200_OK)
-    
+
+
 class MembersStatusView(APIView):
     """
-    GET /api/monitor/members-status/
-    Returns a list of ALL members’ current WorkSession status (ID, name, active/paused, total_seconds).
+    GET /api/monitor/members-status/?project=<id>
+    Returns all members' WorkSession status for a project.
     """
-    def get(self, request):
-        # 1) Grab all WorkSession rows, selecting related Member→User in one SQL query.
-        #    (Assumes WorkSession has foreign key `member = models.ForeignKey(Member, ...)`.)
-        sessions = WorkSession.objects.select_related("member", "member__user").all()
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request):
+        project_id = request.query_params.get('project')
+        if project_id:
+            sessions = WorkSession.objects.filter(project_id=project_id)
+        else:
+            sessions = WorkSession.objects.all()
+
+        sessions = sessions.select_related('member', 'member__user', 'project')
         data = []
         for sess in sessions:
-            # sess.member is a Member instance. To get a username (or full name), we must go through sess.member.user
-            user_obj = sess.member.user
-
-            # Build the response dictionary for this member:
+            user = sess.member.user
             data.append({
-                "id": user_obj.id,
-                "name": user_obj.get_full_name() or user_obj.username,
-                "status": "active" if sess.is_running else "paused",
-                "total_seconds": sess.total_seconds,
+                'id': user.id,
+                'name': user.get_full_name() or user.username,
+                'status': 'active' if sess.is_running else 'paused',
+                'total_seconds': sess.total_seconds,
+                'project_id': sess.project_id,
+                'project_name': sess.project.name,
             })
-
         return Response(data, status=status.HTTP_200_OK)
-    
+
 # ─── 1) List + Create BreakPolicy ─────────────────────────────────────────
 # ─── 1) List + Create BreakPolicy ─────────────────────────────────────────
 

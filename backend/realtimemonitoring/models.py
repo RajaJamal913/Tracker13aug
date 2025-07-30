@@ -6,18 +6,30 @@ from django.utils import timezone
 from projects.models import Member, Project
 
 class WorkSession(models.Model):
-    member = models.OneToOneField(
-        Member, on_delete=models.CASCADE, related_name="current_session"
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="work_sessions"
     )
-    project      = models.ForeignKey(
+    project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,
         null=True,
         related_name="work_sessions"
-    )  
+    )
     start = models.DateTimeField(default=timezone.now)
     accumulated = models.BigIntegerField(default=0)
     is_running = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member", "project"],
+                name="unique_member_project"
+            )
+        ]
+        # Optional: order by most recent start
+        ordering = ["-start"]
 
     def stop(self):
         """Stop the timer and accumulate seconds since start."""

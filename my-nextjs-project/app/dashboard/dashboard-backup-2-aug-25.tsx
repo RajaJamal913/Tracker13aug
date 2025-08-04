@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { useDropzone } from "react-dropzone"; 
 import { Card } from "react-bootstrap";
 import { Legend } from "recharts";
@@ -10,8 +10,6 @@ import React from 'react';
 import { Table, Form } from "react-bootstrap";
 import { Button } from "react-bootstrap";
 import { FaUserPlus } from "react-icons/fa";
-import { useRouter } from 'next/navigation'
-
 
 import {
   BarChart,
@@ -24,45 +22,6 @@ import {
   Cell,
 } from 'recharts';
 export default function Home() {
-  const [username, setUsername] = useState<string>('Loading…')
-const router = useRouter()
-
-// Redirect unauthenticated users
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/user-login');
-      return;
-    }
-
-    fetch('http://127.0.0.1:8000/api/auth/whoami/', {
-      headers: { Authorization: `Token ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Unauthorized');
-        return res.json();
-      })
-      .then((data) => setUsername(data.username))
-      .catch(() => {
-        // If token invalid or fetch error, redirect to login
-        router.push('/user-login');
-      });
-  }, [router]);
-
-
- // Compute current date & day:
-  const today = new Date()
-  const formattedDate = today.toLocaleDateString('en-US', {
-    day:   'numeric',
-    month: 'long',
-    year:  'numeric',
-  })          // e.g. "2 August 2025"
-  const dayName = today.toLocaleDateString('en-US', {
-    weekday: 'long',
-  })          // e.g. "Saturday"
-
-
-
   const users = [
     { name: "Jenny Wilson", email: "w.lawson@example.com", time: "just now", location: "Austin", image: "/assets/images/recent-log.svg" },
     { name: "Devon Lane", email: "dat.roberts@example.com", time: "2 hr ago", location: "New York", image: "/assets/images/recent-log.svg" },
@@ -176,24 +135,20 @@ const data2 = [
       <div className="row mt-4 mb-4">
         <div className="col-lg-12 mb-5 px-lg-3 px-0">
           <Card className="d-flex flex-row align-items-center p-3 border-0 rounded-3 g-shadow">
-           <div
-    className="d-flex align-items-center me-3 text-white rounded-3 justify-content-center d-sm-flex d-none"
-    style={{ width: '50px', height: '50px', fontWeight: 'bold', fontSize: '18px', background: '#6D2EBB' }}
-  >
-    {username[0]?.toUpperCase() || 'U'}
-  </div>
-  <div className="flex-grow-1">
-    <h6 className="mb-0">{username}</h6>
-    <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>
-      {username}’s Workplace
-    </p>
-    <p className="mb-0 text-muted" style={{ fontSize: '12px' }}>
-      <i className="bi bi-person" /> Owner
-    </p>
-  </div> <div className="text-end">
-        <p className="mb-0" style={{ fontSize: '14px' }}>{formattedDate}</p>
-        <p className="mb-0 text-muted" style={{ fontSize: '12px' }}>{dayName}</p>
-      </div>
+            <div className="d-flex align-items-center me-3 text-white rounded-3 justify-content-center d-sm-flex d-none" style={{ width: "50px", height: "50px", fontWeight: "bold", fontSize: "18px",background:"#6D2EBB" }}>
+              HR
+            </div>
+            <div className="flex-grow-1">
+              <h6 className="mb-0">Hamza Rasheed</h6>
+              <p className="mb-0 text-muted" style={{ fontSize: "14px" }}>Hamza’s Workplace</p>
+              <p className="mb-0 text-muted" style={{ fontSize: "12px" }}>
+                <i className="bi bi-person" /> Owner
+              </p>
+            </div>
+            <div className="text-end">
+              <p className="mb-0" style={{ fontSize: "14px" }}>25th March 2025</p>
+              <p className="mb-0 text-muted" style={{ fontSize: "12px" }}>Tuesday</p>
+            </div>
           </Card>
         </div>
       </div>

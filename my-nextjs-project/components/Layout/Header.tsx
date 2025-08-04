@@ -1,7 +1,7 @@
 // components/Header.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Link from "next/link";
 import Image from "next/image";
@@ -11,7 +11,15 @@ import NotificationDropdown from "@/components/NotificationDropdown";
 // wherever your file lives, adjust the path accordingly
 import StartTracker from '@/components/StartTracker';
 
+// import React, { useRef } from "react";
+import { Menu } from "primereact/menu";
+import { Button } from "primereact/button";
+import { Avatar } from "primereact/avatar";
+import { Ripple } from "primereact/ripple";
+
+
 export default function Header() {
+  
   const [username, setUsername] = useState<string>("Loading...");
   const router = useRouter();
 
@@ -28,20 +36,44 @@ export default function Header() {
     localStorage.removeItem("token");
     router.push("/user-login");
   };
+ const menu = useRef<Menu>(null);
 
+  const items = [
+    {
+      label: "Profile",
+      icon: "pi pi-user",
+      command: () => alert("Go to Profile"),
+    },
+    {
+      label: "Settings",
+      icon: "pi pi-cog",
+      command: () => alert("Open Settings"),
+    },
+    {
+      label: "Notifications",
+      icon: "pi pi-bell",
+      command: () => alert("Show Notifications"),
+    },
+    { separator: true },
+    {
+      label: "Logout",
+      icon: "pi pi-sign-out",
+      command: () => alert("Logged out!"),
+    },
+  ];
   return (
     <header id="header" className="header d-flex align-items-center">
       <div className="header-inner">
         {/* Logo/Sidebar toggle could go here */}
         <div className="welcome-wrapper-main d-flex align-items-center gap-2">
             <StartTracker />
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 d-none">
             <div className="header-welcome-wrapper">
               <Image
                 src="/assets/images/header-user-icon.png"
                 alt="User Icon"
-                width={24}
-                height={24}
+                width={18}
+                height={18}
               />
             </div>
 
@@ -67,8 +99,8 @@ export default function Header() {
                 <Image
                   src="/assets/images/h-chat-icon-new.png"
                   alt="Messages"
-                  width={24}
-                  height={24}
+                  width={18}
+                  height={18}
                 />
                 <span className="badge bg-success badge-number">3</span>
               </Link>
@@ -92,8 +124,11 @@ export default function Header() {
             </li>
 
             {/* Profile Dropdown */}
+            <li>
+              
+            </li>
             <li className="nav-item dropdown ms-3">
-              <Link
+              {/* <Link
                 href="#"
                 className="nav-link nav-profile d-flex align-items-center"
                 data-bs-toggle="dropdown"
@@ -136,11 +171,49 @@ export default function Header() {
                     <span>Sign Out</span>
                   </button>
                 </li>
-              </ul>
+                <li>
+           
+                </li>
+              </ul> */}
+                 <div className="nav-profile-wrapper">
+      <Menu model={items} popup ref={menu} />
+
+      {/* Avatar + Name Trigger */}
+      <div
+        onClick={(event) => menu.current?.toggle(event)}
+        className="flex align-items-center gap-2 cursor-pointer nav-profile"
+      >
+        <Avatar
+          image="/assets/images/profile-img.jpg" // Replace with actual user image
+          size="large"
+          shape="circle"
+        />
+        <span className="font-medium text-900">Ammad</span>
+        <i className="pi pi-angle-down text-600 text-sm"></i>
+        <Ripple />
+      </div>
+    </div>
             </li>
           </ul>
         </nav>
       </div>
+      <style jsx>
+{
+  `
+  .p-menu .p-menuitem:not(.p-highlight):not(.p-disabled).p-focus > .p-menuitem-content {
+    color: #4b5563;
+   
+    background: linear-gradient(90deg, rgba(176, 122, 243, 0.27) 0%, rgba(208, 248, 254, 0.40) 46.15%, rgba(176, 122, 243, 0.28) 69.23%, rgba(208, 248, 254, 0.40) 100%) !important;
+}
+   .p-menu.p-menu-overlay .p-menu-list {
+    padding: 0px;
+}
+        .p-menu.p-menu-overlay .p-menu-list a{
+    text-decoration:none;
+}
+  `
+}
+      </style>
     </header>
   );
 }

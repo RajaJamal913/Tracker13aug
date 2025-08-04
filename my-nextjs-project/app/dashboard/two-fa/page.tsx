@@ -1,18 +1,20 @@
+/* File: components/TwoFA.tsx */
 'use client';
+export const dynamic = 'force-dynamic';
 import { useState } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
-import 'primereact/resources/themes/lara-light-indigo/theme.css'; // theme
-import 'primereact/resources/primereact.min.css'; // core css
-import 'primeicons/primeicons.css'; // icons
+import 'primereact/resources/themes/lara-light-indigo/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
 
 const TwoFA = () => {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [code, setCode] = useState('');
 
-  // Screenshot & permissions settings (as in your original code)
-  const [selectedCount, setSelectedCount] = useState<number>(5); 
-  const [screenshotMode, setScreenshotMode] = useState<string>('no-screenshot');
+  // Screenshot & permissions settings
+  const [selectedCount, setSelectedCount] = useState(5);
+  const [screenshotMode, setScreenshotMode] = useState('no-screenshot');
   const [settings, setSettings] = useState({
     allowManagerDeletion: false,
     allowEmployeeDeletion: false,
@@ -28,14 +30,14 @@ const TwoFA = () => {
     console.log('Saved settings:', {
       screenshotCount: selectedCount,
       screenshotMode,
-      ...settings
+      ...settings,
     });
     alert('Settings saved!');
   };
 
   const handleVerify = () => {
-    console.log("Verifying code:", code);
-    alert("2FA Verified!");
+    console.log('Verifying code:', code);
+    alert('2FA Verified!');
     setShowCodeModal(false);
   };
 
@@ -47,15 +49,17 @@ const TwoFA = () => {
         </div>
         <div className="switvh-btns-wrap p-4">
           <h5>Two-Factor Authentication (2FA)</h5>
-          <button 
-            className="btn mb-5" 
-            style={{ border: "2px solid #9A4AFD", color: "#9A4AFD" }}
+          <button
+            className="btn mb-5"
+            style={{ border: '2px solid #9A4AFD', color: '#9A4AFD' }}
             onClick={() => setShowQRModal(true)}
           >
             Set up Authenticator
           </button>
           <div className="d-flex justify-content-end">
-            <button className="btn g-btn" onClick={handleSave}>Save Changes</button>
+            <button className="btn g-btn" onClick={handleSave}>
+              Save Changes
+            </button>
           </div>
         </div>
       </div>
@@ -68,22 +72,24 @@ const TwoFA = () => {
         <Modal.Body className="text-center">
           <p>• Scan the QR Code</p>
           <div className="d-flex justify-content-center">
-
-          <img 
-            src="/assets/images/Qr Code.png" 
-            alt="QR Code" 
-            style={{ width: '100px', height: '100px', marginBottom: '20px' }} 
-          />
+            <img
+              src="/assets/images/Qr Code.png"
+              alt="QR Code"
+              style={{ width: '100px', height: '100px', marginBottom: '20px' }}
+            />
           </div>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowQRModal(false)}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => {
-            setShowQRModal(false);
-            setShowCodeModal(true);
-          }}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowQRModal(false);
+              setShowCodeModal(true);
+            }}
+          >
             Next
           </Button>
         </Modal.Footer>
@@ -97,20 +103,23 @@ const TwoFA = () => {
         <Modal.Body>
           <Form.Group controlId="formCode">
             <Form.Label>Enter the 6-digit code</Form.Label>
-            <Form.Control 
-              type="text" 
-              maxLength={6} 
-              value={code} 
-              onChange={(e) => setCode(e.target.value)} 
-              placeholder="Enter Code" 
+            <Form.Control
+              type="text"
+              maxLength={6}
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="Enter Code"
             />
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="light" onClick={() => {
-            setShowCodeModal(false);
-            setShowQRModal(true);
-          }}>
+          <Button
+            variant="light"
+            onClick={() => {
+              setShowCodeModal(false);
+              setShowQRModal(true);
+            }}
+          >
             Back
           </Button>
           <Button variant="secondary" onClick={() => setShowCodeModal(false)}>

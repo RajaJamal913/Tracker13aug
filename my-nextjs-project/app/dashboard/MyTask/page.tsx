@@ -1,12 +1,11 @@
 'use client';
-export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 
 interface Task {
   id: number;
   sequence_id: number;
-  project_id: number;         // ← renamed
+  project_id: number;
   assignee: number | null;
   title: string;
   due_date: string | null;
@@ -21,100 +20,99 @@ interface ProjectMap {
   [id: number]: string;
 }
 
-export default function MyTaskPage() {
+export default function MyTasksPage() {
+  // Prevent any server-side execution
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+  if (!hydrated) return null;
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectNames, setProjectNames] = useState<ProjectMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // run only in browser
+    const token = localStorage.getItem('token');
     if (!token) {
-      setError("You must be logged in to view your tasks.");
+      setError('You must be logged in to view your tasks.');
       setLoading(false);
       return;
     }
 
-    fetch("http://localhost:8000/api/tasks/my/", {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Token ${token}`,
-      },
-    })
-      .then(res => {
+    (async () => {
+      try {
+        const res = await fetch('/api/tasks/my/', {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Token ${token}`,
+          },
+        });
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error("Authentication failed. Please log in again.");
-          }
+          if (res.status === 401 || res.status === 403) throw new Error('Authentication failed. Please log in again.');
           throw new Error(`Failed to fetch tasks (${res.status})`);
         }
-        return res.json();
-      })
-      .then((data: Task[]) => {
+        const data: Task[] = await res.json();
         setTasks(data);
-        // extract project_id instead of project
-        const uniqueProjectIds = Array.from(new Set(data.map(t => t.project_id)));
-        return uniqueProjectIds;
-      })
-      .then(async uniqueIds => {
+
+        const uniqueIds = Array.from(new Set(data.map(t => t.project_id)));
         const map: ProjectMap = {};
-        await Promise.all(uniqueIds.map(async pid => {
-          try {
-            const res = await fetch(`http://localhost:8000/api/projects/${pid}/`, {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Token ${localStorage.getItem("token")}`,
-              },
-            });
-            if (!res.ok) throw new Error();
-            const pj = await res.json();
-            map[pid] = pj.name;
-          } catch {
-            map[pid] = `Project #${pid}`;
-          }
-        }));
+
+        await Promise.all(
+          uniqueIds.map(async pid => {
+            try {
+              const pRes = await fetch(`/api/projects/${pid}/`, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Token ${token}`,
+                },
+              });
+              if (!pRes.ok) throw new Error();
+              const pj = await pRes.json();
+              map[pid] = pj.name;
+            } catch {
+              map[pid] = `Project #${pid}`;
+            }
+          })
+        );
         setProjectNames(map);
-      })
-      .catch(err => {
-        console.error("Error fetching tasks:", err);
+      } catch (err: any) {
+        console.error('Error fetching tasks:', err);
         setError(err.message);
-      })
-      .finally(() => {
+      } finally {
         setLoading(false);
-      });
-  }, []);
+      }
+    })();
+  }, [hydrated]);
 
   if (loading) return <p>Loading…</p>;
-  if (error)   return <p style={{ color: "red" }}>{error}</p>;
+  if (error) return <p style={{ color: 'red' }}>{error}</p>;
 
   return (
-    <div style={{ padding: "1rem" }}>
+    <div style={{ padding: '1rem' }}>
       <h3>My Assigned Tasks</h3>
       {tasks.length === 0 ? (
         <p>You have no tasks assigned to you.</p>
       ) : (
-        <table
-          className="table g-table mt-2"
-          style={{ width: "100%", marginTop: "0.5rem" }}
-        >
+        <table className="table g-table mt-2" style={{ width: '100%', marginTop: '0.5rem' }}>
           <thead>
             <tr>
-              {["Project", "Sequence #", "Title", "Due Date", "Priority", "Status"].map(h => (
-                <th key={h} style={{ padding: "0.5rem" }}>{h}</th>
+              {['Project', 'Sequence #', 'Title', 'Due Date', 'Priority', 'Status'].map(h => (
+                <th key={h} style={{ padding: '0.5rem' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {tasks.map(task => (
               <tr key={task.id}>
-                <td style={{ padding: "0.5rem" }}>
-                  {projectNames[task.project_id] ?? `Project #${task.project_id}`}
-                </td>
-                <td style={{ padding: "0.5rem" }}>{task.sequence_id}</td>
-                <td style={{ padding: "0.5rem" }}>{task.title}</td>
-                <td style={{ padding: "0.5rem" }}>{task.due_date ?? "—"}</td>
-                <td style={{ padding: "0.5rem" }}>{task.priority ?? "—"}</td>
-                <td style={{ padding: "0.5rem" }}>{task.status ?? "—"}</td>
+                <td style={{ padding: '0.5rem' }}>{projectNames[task.project_id] ?? `Project #${task.project_id}`}</td>
+                <td style={{ padding: '0.5rem' }}>{task.sequence_id}</td>
+                <td style={{ padding: '0.5rem' }}>{task.title}</td>
+                <td style={{ padding: '0.5rem' }}>{task.due_date ?? '—'}</td>
+                <td style={{ padding: '0.5rem' }}>{task.priority ?? '—'}</td>
+                <td style={{ padding: '0.5rem' }}>{task.status ?? '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -1,4 +1,3 @@
-// app/dashboard/member-monitoring/page.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -25,7 +24,6 @@ type StatusResponse = {
 };
 
 export default function MonitoringPage() {
-  // ─── State ───
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [sessionData, setSessionData] = useState<StatusResponse | null>(null);
@@ -35,23 +33,23 @@ export default function MonitoringPage() {
   const [token, setToken] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Persist project selection
+  // Persist project selection and token
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const savedProj = localStorage.getItem('selectedProject');
-    if (savedProj) {
-      setSelectedProject(Number(savedProj));
-    }
+    if (savedProj) setSelectedProject(Number(savedProj));
     const savedToken = localStorage.getItem('token');
     if (savedToken) setToken(savedToken);
   }, []);
 
-  // Store when user changes project
   const handleProjectChange = (id: number) => {
     setSelectedProject(id);
-    localStorage.setItem('selectedProject', id.toString());
+    if (typeof window !== "undefined") {
+      localStorage.setItem('selectedProject', id.toString());
+    }
   };
 
-  // ─── Timer controls ───
+  // Timer controls
   const startLocalTimer = useCallback(() => {
     if (intervalRef.current) return;
     intervalRef.current = setInterval(() => {
@@ -111,12 +109,15 @@ export default function MonitoringPage() {
     if (selectedProject !== null) {
       fetchStatus(selectedProject);
       const handler = () => fetchStatus(selectedProject);
-      window.addEventListener('trackerStatusChanged', handler);
-      return () => {
-        window.removeEventListener('trackerStatusChanged', handler);
-        stopLocalTimer();
-      };
+      if (typeof window !== "undefined") {
+        window.addEventListener('trackerStatusChanged', handler);
+        return () => {
+          window.removeEventListener('trackerStatusChanged', handler);
+          stopLocalTimer();
+        };
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, fetchStatus, stopLocalTimer]);
 
   // Toggle start/stop
@@ -133,7 +134,9 @@ export default function MonitoringPage() {
       const data: StatusResponse = await res.json();
       setSessionData(data);
       data.status === 'active' ? startLocalTimer() : stopLocalTimer();
-      window.dispatchEvent(new CustomEvent('trackerStatusChanged'));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent('trackerStatusChanged'));
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

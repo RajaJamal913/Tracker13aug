@@ -110,11 +110,13 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
           </svg>
         </Link>
       </div>
+      <div className="nav-wrapper">
       <nav className="g-scroll mt-4">
         <ul className="space-y-2 p-0">
           <li className="active nav-link p-2 text-blue-700">
 
-            <Link href="/dashboard"> <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <Link href="/dashboard"> 
+            <svg xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24" fill="none">
               <rect width="24" height="24" fill="url(#pattern0_11_171)" />
               <defs>
                 <pattern id="pattern0_11_171" patternContentUnits="objectBoundingBox" width="1" height="1">
@@ -124,8 +126,27 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               </defs>
             </svg><span>Dashboard</span></Link>
           </li>
+          <li className=" nav-link p-2 text-blue-700">
+
+            <Link href="/dashboard/timesheet/timerequest"> 
+           <FaClock />
+           <span>Time Request</span></Link>
+          </li>
+          <li className=" nav-link p-2 text-blue-700">
+
+            <Link href="/dashboard/timesheet/timerequest"> 
+           <FaCamera />
+           <span>Screenshot Feature</span></Link>
+          </li>
+
+           <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+                 <FaEye />
+                <Link href="" className="underline text-white">
+                  Realtime Monitoring
+                </Link>
+              </li>
           {/* Timesheets Dropdown */}
-          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all d-none">
             {/* <div className="d-flex align-items-center">
               
             </div> */}
@@ -176,7 +197,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               className="flex-1 text-left hover:text-blue d-flex justify-content-between align-items-center w-100"
             ><FaChartBar />
               <div className="d-flex justify-content-between align-items-center w-100 s-s-b">
-                <span>Reports</span>
+                <span>Reporting Feature</span>
                 <FaChevronDown
                   className={`transition-transform ${openMenus["reports"] ? "rotate-180" : ""
                     }`}
@@ -216,7 +237,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             </ul>
 
           )}
-          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all d-none">
             <button
               onClick={() => toggleMenu("statistics")}
               className="flex items-center gap-2 hover:bg-white hover:text-black transition-all d-flex justify-content-between align-items-center w-100"
@@ -260,7 +281,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               </li>
             </ul>
           )}
-          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none">
           
             <button onClick={() => toggleMenu("people")} className="d-flex justify-content-between align-items-center w-100">  <FaUsers />
 
@@ -307,19 +328,37 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
 
           <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link">
             <Link href="/dashboard/tasks">
+            <FaUser />
+            <span>Member</span>
+            </Link>
+          </li>
+          <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link">
+            <Link href="/dashboard/Teams2/add-teams">
+             <FaUsersCog />
+            <span>Teams</span>
+            </Link>
+          </li>
+          <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link">
+            <Link href="/dashboard/project-viewers">
+             <FaEye />
+            <span>Project Viewers</span>
+            </Link>
+          </li>
+          <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link d-none">
+            <Link href="/dashboard/tasks">
              <FaTasks />
             <span>Tasks</span>
             </Link>
           </li>
 
-          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all nav-link">
+          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all nav-link d-none">
              <Link href="/dashboard/tools">
              <FaTools />
              <span>Tools</span>
              </Link>
           </li>
           {/* Time Off Dropdown */}
-          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 d-flex justify-content-between align-items-center gap-2 transition-all d-none">
            
             <button onClick={() => toggleMenu("timeOff")} className="d-flex justify-content-between align-items-center w-100">
                <FaCalendarAlt />
@@ -368,8 +407,46 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             </ul>
           )}
 
-          {/* Monitoring Dropdown */}
+
+  {/* Security Dropdown */}
           <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+            <FaEye />
+            <button onClick={() => toggleMenu("monitoring")} className="flex-1 text-left text-blue">
+              Security Feature
+            </button>
+            <FaChevronDown
+              className={`transition-transform ${openMenus["monitoring"] ? "rotate-180" : ""}`}
+            />
+          </li>
+
+          {openMenus["monitoring"] && (
+            <ul className="pl-6 space-y-2">
+              <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+                <FaCamera />
+                <Link href="" className="underline text-white">
+                  2 Factor Authentication
+                </Link>
+              </li>
+             
+              <li className="flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all">
+                <FaChartLine />
+                <Link href="/dashboard/monitoring/daily-activity" className="underline text-blue">
+                  Data Encryption
+                </Link>
+              </li>
+              <li className="d-none flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all">
+                <FaTachometerAlt />
+                <Link href="/dashboard/monitoring/productivity" className="underline text-blue">
+                  Productivity
+                </Link>
+              </li>
+            </ul>
+          )}
+
+
+
+          {/* Monitoring Dropdown */}
+          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none">
             <FaEye />
             <button onClick={() => toggleMenu("monitoring")} className="flex-1 text-left text-blue">
               Monitoring
@@ -383,10 +460,11 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             <ul className="pl-6 space-y-2">
               <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
                 <FaCamera />
-                <Link href="/dashboard/monitoring/screenshots" className="underline text-white">
+                <Link href="" className="underline text-white">
                   Screenshots
                 </Link>
               </li>
+             
               <li className="flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all">
                 <FaChartLine />
                 <Link href="/dashboard/monitoring/daily-activity" className="underline text-blue">
@@ -403,7 +481,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
           )}
 
           {/* Projects Dropdown */}
-          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+          <li className="d-none hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
             <FaProjectDiagram />
             <button onClick={() => toggleMenu("projects")} className="flex-1 text-left text-blue">
               Projects
@@ -446,7 +524,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
 
 
           {/* Communication Dropdown */}
-          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none">
             <FaCommentAlt /> {/* Different icon for Communication */}
             <button
               onClick={() => toggleMenu("communication")}
@@ -469,7 +547,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               </li>
             </ul>
           )}
-          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
+          <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none">
             <FaStream /> <Link href="/tools">Integeration</Link>
           </li>
 
@@ -480,6 +558,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
           </li>
         </ul>
       </nav>
+       </div>
     </aside>
   );
 }

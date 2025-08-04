@@ -1,5 +1,5 @@
 'use client';
-
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { Table } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';

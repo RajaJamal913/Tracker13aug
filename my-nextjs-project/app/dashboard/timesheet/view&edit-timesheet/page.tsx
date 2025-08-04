@@ -1,5 +1,5 @@
-// TimeRequestTabs.tsx
 "use client";
+export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, FormEvent } from "react";
 import {
@@ -43,14 +43,16 @@ interface Task {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
 
 function getCookie(name: string) {
-  const m = document.cookie.match(new RegExp(`(^|;)\\s*${name}=\\s*([^;]+)`));
-  return m ? m[2] : "";
+  const match = document.cookie.match(new RegExp(`(^|;)\\s*${name}=\\s*([^;]+)`));
+  return match ? match[2] : "";
 }
 
 export default function TimeRequestTabs() {
   const [activeTab, setActiveTab] = useState<"PENDING" | "APPROVED" | "REJECTED">("PENDING");
   const [requests, setRequests] = useState<Record<string, TimeRequest[]>>({
-    PENDING: [], APPROVED: [], REJECTED: [],
+    PENDING: [],
+    APPROVED: [],
+    REJECTED: [],
   });
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -67,10 +69,17 @@ export default function TimeRequestTabs() {
     status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED",
   });
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const csrftoken = getCookie("csrftoken");
+  // CSRF token and auth token, initialized client-side
+  const [csrftoken, setCsrfToken] = useState<string>("");
+  const [token, setToken] = useState<string | null>(null);
 
-  // Load all time‑requests
+  useEffect(() => {
+    // only run in browser
+    setCsrfToken(getCookie("csrftoken"));
+    setToken(localStorage.getItem("token"));
+  }, []);
+
+  // Load all time-requests
   const loadRequests = async () => {
     setLoading(true);
     try {
@@ -86,7 +95,7 @@ export default function TimeRequestTabs() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const list: TimeRequest[] = Array.isArray(json) ? json : json.results ?? [];
-      const grouped = { PENDING: [], APPROVED: [], REJECTED: [] } as Record<string, any>;
+      const grouped = { PENDING: [], APPROVED: [], REJECTED: [] } as Record<string, TimeRequest[]>;
       list.forEach(r => grouped[r.status].push(r));
       setRequests(grouped);
     } catch (e) {
@@ -123,7 +132,8 @@ export default function TimeRequestTabs() {
     }
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/tasks/?project=${formData.project!.id}`, {
+        const projectId = formData.project!.id;
+        const res = await fetch(`${API_BASE}/tasks/?project=${projectId}`, {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
@@ -138,60 +148,42 @@ export default function TimeRequestTabs() {
         setTasks([]);
       }
     })();
-  }, [formData.project]);
+  }, [formData.project, csrftoken, token]);
 
   useEffect(() => {
-    loadRequests();
-    loadProjects();
-  }, []);
+    if (csrftoken) {
+      loadRequests();
+      loadProjects();
+    }
+  }, [csrftoken, token]);
 
   const openAdd = () => {
     setEditRequest(null);
-    setFormData({
-      project: null,
-      task: null,
-      date: "",
-      timeFrom: "",
-      timeTo: "",
-      description: "",
-      status: "PENDING",
-    });
+    setFormData({ project: null, task: null, date: "", timeFrom: "", timeTo: "", description: "", status: "PENDING" });
     setShowModal(true);
   };
 
   const openEdit = (r: TimeRequest) => {
     setEditRequest(r);
-    setFormData({
-      project: r.project,
-      task: r.task,
-      date: r.date,
-      timeFrom: r.time_from,
-      timeTo: r.time_to,
-      description: r.description,
-      status: r.status,
-    });
+    setFormData({ project: r.project, task: r.task, date: r.date, timeFrom: r.time_from, timeTo: r.time_to, description: r.description, status: r.status });
     setShowModal(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
-    // normalize times to HH:MM:SS
     const [h1, m1] = formData.timeFrom.split(":");
     const [h2, m2] = formData.timeTo.split(":");
     const payload = {
       project: formData.project!.id,
       task: formData.task!.id,
       date: formData.date,
-      time_from: `${h1.padStart(2, "0")}:${m1.padStart(2, "0")}:00`,
-      time_to: `${h2.padStart(2, "0")}:${m2.padStart(2, "0")}:00`,
+      time_from: `${h1.padStart(2, "0")}:${m1.padStart(2, "0")}":00`,
+      time_to: `${h2.padStart(2, "0")}:${m2.padStart(2, "0")}":00`,
       description: formData.description,
       status: formData.status,
     };
 
-    const url = editRequest
-      ? `${API_BASE}/time-requests/${editRequest.id}/`
-      : `${API_BASE}/time-requests/`;
+    const url = editRequest ? `${API_BASE}/time-requests/${editRequest.id}/` : `${API_BASE}/time-requests/`;
     const method = editRequest ? "PATCH" : "POST";
 
     const res = await fetch(url, {
@@ -207,7 +199,7 @@ export default function TimeRequestTabs() {
 
     if (!res.ok) {
       let errBody = null;
-      try { errBody = await res.json() } catch {}
+      try { errBody = await res.json() } catch {};
       console.error("Save failed", res.status, errBody || await res.text());
       return;
     }
@@ -234,17 +226,17 @@ export default function TimeRequestTabs() {
         {requests[status].map(r => (
           <tr key={r.id}>
             <td>{r.user}</td>
-            <td>{r.project_name}</td>
-            <td>{r.task_title}</td>
+            <td>{r.project?.name}</td>
+            <td>{r.task?.title}</td>
             <td>{r.date}</td>
             <td>{r.requested_duration}</td>
             <td>{`${r.time_from} - ${r.time_to}`}</td>
             <td>{r.status}</td>
             {status === "PENDING" && (
               <td>
-                <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(r)}>
+                <Button size="sm" variant="outline-primary" onClick={() => openEdit(r)}>
                   Edit
-                </button>
+                </Button>
               </td>
             )}
           </tr>
@@ -257,14 +249,14 @@ export default function TimeRequestTabs() {
     <div className="container-fluid mt-5">
       <div className="d-flex align-items-center justify-content-between mb-4">
         <h2>Time Request</h2>
-        <button className="btn g-btn" onClick={openAdd}>+ Add Request</button>
+        <Button onClick={openAdd}>+ Add Request</Button>
       </div>
 
       {loading ? (
         <Spinner animation="border" />
       ) : (
         <>
-          <Nav variant="tabs" activeKey={activeTab} onSelect={(k) => setActiveTab(k as any)}>
+          <Nav variant="tabs" activeKey={activeTab} onSelect={k => setActiveTab(k as any)}>
             <Nav.Item><Nav.Link eventKey="PENDING">Pending</Nav.Link></Nav.Item>
             <Nav.Item><Nav.Link eventKey="APPROVED">Approved</Nav.Link></Nav.Item>
             <Nav.Item><Nav.Link eventKey="REJECTED">Rejected</Nav.Link></Nav.Item>
@@ -286,9 +278,7 @@ export default function TimeRequestTabs() {
                 <Dropdown
                   value={formData.project}
                   options={projects}
-                  onChange={(e: any) => {
-                    setFormData({ ...formData, project: e.value, task: null });
-                  }}
+                  onChange={(e: any) => setFormData({ ...formData, project: e.value, task: null })}
                   optionLabel="name"
                   placeholder="Select a Project"
                   filter
@@ -318,7 +308,7 @@ export default function TimeRequestTabs() {
                 <Form.Control
                   type="date"
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={e => setFormData({ ...formData, date: e.target.value })}
                   required
                 />
               </Col>
@@ -328,7 +318,7 @@ export default function TimeRequestTabs() {
                   as="textarea"
                   rows={3}
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
                 />
               </Col>
             </Row>
@@ -339,7 +329,7 @@ export default function TimeRequestTabs() {
                 <Form.Control
                   type="time"
                   value={formData.timeFrom}
-                  onChange={(e) => setFormData({ ...formData, timeFrom: e.target.value })}
+                  onChange={e => setFormData({ ...formData, timeFrom: e.target.value })}
                   required
                 />
               </Col>
@@ -348,17 +338,17 @@ export default function TimeRequestTabs() {
                 <Form.Control
                   type="time"
                   value={formData.timeTo}
-                  onChange={(e) => setFormData({ ...formData, timeTo: e.target.value })}
+                  onChange={e => setFormData({ ...formData, timeTo: e.target.value })}
                   required
                 />
               </Col>
             </Row>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit">
+            <Button type="submit">
               {editRequest ? "Update" : "Add"}
             </Button>
           </Modal.Footer>

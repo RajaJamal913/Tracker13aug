@@ -1,7 +1,7 @@
 'use client';
-
+import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
-
+import "bootstrap/dist/css/bootstrap.min.css";
 interface Task {
   id: number;
   sequence_id: number;
@@ -20,21 +20,13 @@ interface ProjectMap {
   [id: number]: string;
 }
 
-export default function MyTasksPage() {
-  // Prevent any server-side execution
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-  if (!hydrated) return null;
-
+function MyTaskPageComponent() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectNames, setProjectNames] = useState<ProjectMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // run only in browser
     const token = localStorage.getItem('token');
     if (!token) {
       setError('You must be logged in to view your tasks.');
@@ -42,35 +34,39 @@ export default function MyTasksPage() {
       return;
     }
 
-    (async () => {
-      try {
-        const res = await fetch('/api/tasks/my/', {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Token ${token}`,
-          },
-        });
+    fetch('http://localhost:8000/api/tasks/my/', {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Token ${token}`,
+      },
+    })
+      .then(res => {
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) throw new Error('Authentication failed. Please log in again.');
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Authentication failed. Please log in again.');
+          }
           throw new Error(`Failed to fetch tasks (${res.status})`);
         }
-        const data: Task[] = await res.json();
+        return res.json();
+      })
+      .then((data: Task[]) => {
         setTasks(data);
-
         const uniqueIds = Array.from(new Set(data.map(t => t.project_id)));
+        return uniqueIds;
+      })
+      .then(async uniqueIds => {
         const map: ProjectMap = {};
-
         await Promise.all(
           uniqueIds.map(async pid => {
             try {
-              const pRes = await fetch(`/api/projects/${pid}/`, {
+              const res = await fetch(`http://localhost:8000/api/projects/${pid}/`, {
                 headers: {
                   'Content-Type': 'application/json',
-                  Authorization: `Token ${token}`,
+                  Authorization: `Token ${localStorage.getItem('token')}`,
                 },
               });
-              if (!pRes.ok) throw new Error();
-              const pj = await pRes.json();
+              if (!res.ok) throw new Error();
+              const pj = await res.json();
               map[pid] = pj.name;
             } catch {
               map[pid] = `Project #${pid}`;
@@ -78,14 +74,15 @@ export default function MyTasksPage() {
           })
         );
         setProjectNames(map);
-      } catch (err: any) {
+      })
+      .catch(err => {
         console.error('Error fetching tasks:', err);
         setError(err.message);
-      } finally {
+      })
+      .finally(() => {
         setLoading(false);
-      }
-    })();
-  }, [hydrated]);
+      });
+  }, []);
 
   if (loading) return <p>Loading…</p>;
   if (error) return <p style={{ color: 'red' }}>{error}</p>;
@@ -107,7 +104,9 @@ export default function MyTasksPage() {
           <tbody>
             {tasks.map(task => (
               <tr key={task.id}>
-                <td style={{ padding: '0.5rem' }}>{projectNames[task.project_id] ?? `Project #${task.project_id}`}</td>
+                <td style={{ padding: '0.5rem' }}>
+                  {projectNames[task.project_id] ?? `Project #${task.project_id}`}
+                </td>
                 <td style={{ padding: '0.5rem' }}>{task.sequence_id}</td>
                 <td style={{ padding: '0.5rem' }}>{task.title}</td>
                 <td style={{ padding: '0.5rem' }}>{task.due_date ?? '—'}</td>
@@ -121,3 +120,8 @@ export default function MyTasksPage() {
     </div>
   );
 }
+
+export default dynamic(
+  () => Promise.resolve(MyTaskPageComponent),
+  { ssr: false }
+);

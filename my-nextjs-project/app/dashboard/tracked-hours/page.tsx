@@ -1,24 +1,32 @@
 "use client";
 export const dynamic = 'force-dynamic';
+
+import NextDynamic from "next/dynamic";
 import { useState, useEffect } from "react";
-import FilterMultiSelects from '@/components/FilterMultiSelects';
+import "bootstrap/dist/css/bootstrap.min.css";
 
 interface ReportItem {
-  date:string;
-  member:string;
+  date: string;
+  member: string;
   project_id: number;
   project_name: string;
-  hour:string;
+  hour: string;
   total_seconds: number;
 }
 
-export default function TimeRequestTabs() {
+export default function TrackedHoursPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Dynamically import FilterMultiSelects on client only
+  const FilterMultiSelects = NextDynamic(
+    () => import('@/components/FilterMultiSelects'),
+    { ssr: false }
+  );
+
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
       setError('Not authenticated');
       setLoading(false);
@@ -44,19 +52,17 @@ export default function TimeRequestTabs() {
   };
 
   if (loading) return <p>Loading report...</p>;
-  if (error) return <p className="text-danger">{error}</p>;
+  if (error)   return <p className="text-danger">{error}</p>;
 
   return (
     <div className="container-fluid py-4">
       <div className="row mb-4">
         <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
           <h2 className="page-heading-wrapper">Tracked Hours</h2>
-          <div className="d-flex justify-content-between align-items-center gap-2">
-           
-            <button className="btn g-btn">Export</button>
-            </div>
-            </div>
-            </div>
+          <button className="btn g-btn">Export</button>
+        </div>
+      </div>
+
       <div className="d-flex justify-content-start mb-4">
         <FilterMultiSelects />
       </div>

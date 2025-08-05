@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = 'force-dynamic';
 import Image from "next/image";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { useCallback, useEffect } from "react";

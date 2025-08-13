@@ -1,7 +1,7 @@
 // statistics page 
 
 'use client';
-export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from 'recharts';
 import { Dropdown } from 'react-bootstrap';

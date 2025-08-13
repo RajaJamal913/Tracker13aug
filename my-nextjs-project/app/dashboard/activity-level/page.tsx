@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { Dropdown } from 'primereact/dropdown';
-import FilterMultiSelects from '@/components/FilterMultiSelects';
 export default function TimeTracker() {
   const [showModal, setShowModal] = useState(false);
 
@@ -76,22 +75,24 @@ const handleCopy = async () => {
 
   return (
     <div className="container py-4">
-      <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
-        <h2 className="page-heading-wrapper">Activity Level</h2>
-        <div className='d-flex gap-2 flex-wrap'>
-          <button className="btn g-btn me-2" onClick={handleShow}>
+    
+
+
+
+<div className="row mb-4">
+  <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
+    <h2 className="page-heading-wrapper">Time Tracker</h2>
+    <div className="d-flex justify-content-between align-items-center gap-2">
+     <button className="btn g-btn me-2" onClick={handleShow}>
             +Schedule
           </button>
           <button className="btn g-btn"  onClick={() => setShowShareModal(true)}>Share</button>
           <button className="btn g-btn" >Export</button>
-        </div>
+      </div>
+      </div>
       </div>
 
-      <div className="row mb-3">
-                <div className="col-lg-12">
-                  <FilterMultiSelects />
-                </div>
-              </div>
+
 
       <table className="table g-table text-center align-middle">
         <thead className="table-dark">
@@ -136,7 +137,7 @@ const handleCopy = async () => {
       {showModal && (
         <div className="modal show d-block" tabIndex={-1} role="dialog">
           <div className="modal-dialog" role="document">
-            <div className="modal-content">
+            <div className="modal-content g-modal-conntent-wrapper">
               <div className="modal-header">
                 <h5 className="modal-title">Create Schedule</h5>
                 <button
@@ -176,12 +177,12 @@ const handleCopy = async () => {
               <div className="modal-footer">
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn g-btn-secondary"
                   onClick={handleClose}
                 >
                   Close
                 </button>
-                <button type="button" className="btn btn-primary">
+                <button type="button" className="btn g-btn">
                   Save Schedule
                 </button>
               </div>
@@ -193,7 +194,7 @@ const handleCopy = async () => {
       {showShareModal && (
   <div className="modal show d-block" tabIndex={-1} role="dialog">
     <div className="modal-dialog modal-dialog-centered" role="document">
-      <div className="modal-content shadow">
+      <div className="modal-content shadow g-modal-conntent-wrapper">
         <div className="modal-header">
           <h5 className="modal-title text-primary">Share Report</h5>
           <button
@@ -220,7 +221,7 @@ const handleCopy = async () => {
     </div>
   </div>
 )}
-
+{showModal && <div className="modal-backdrop fade show"></div>}
     </div>
   );
 }

@@ -16,6 +16,12 @@ from .models import UserProfile
 from .serializers import PersonalInfoSerializer, PasswordChangeSerializer
 
 
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
+
+
+# Set up logging
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
@@ -24,36 +30,45 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=req.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        token = Token.objects.get(user=user)
+       
         return Response({
-            "token": token.key,
+            
             "user": {
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "phone": user.phone,
             }
         }, status=status.HTTP_201_CREATED)
+
+# views.py
+from rest_framework.authtoken.models import Token
 
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
 
-    def post(self, req, *args, **kwargs):
-        serializer = self.get_serializer(data=req.data)
-        serializer.is_valid(raise_exception=True)
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        
+        if not serializer.is_valid():
+            print("Validation errors:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
         user = serializer.validated_data["user"]
-        token, _ = Token.objects.get_or_create(user=user)
+        
+        # Clean up existing tokens
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+        
         return Response({
             "token": token.key,
             "user": {
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "phone": user.phone,
             }
         })
-    
+
 class WhoAmIView(APIView):
     permission_classes = [IsAuthenticated]
 

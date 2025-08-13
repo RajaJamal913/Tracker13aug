@@ -116,19 +116,15 @@ export default function StartTracker({ projectId }: StartTrackerProps) {
   // Render UI
   if (!effectiveProject) {
     return (
-      <button className="btn tracker-btn gap-2" disabled title="Select a project">
-        <span className="ms-2 text-white fw-semibold">00:00:00</span>
-        <div className="trk-play-icon">
-           <img src="/assets/images/play-icon.png" alt="" />
-        </div>
-       
+      <button className="btn btn-outline-secondary btn-sm" disabled title="Select a project">
+        <FaPlay /> <span className="ms-2">00:00:00</span>
       </button>
     );
   }
 
   if (loading) {
     return (
-      <button className="btn " disabled>
+      <button className="btn btn-outline-light btn-sm" disabled>
         <Spinner animation="border" size="sm" />
       </button>
     );
@@ -137,20 +133,17 @@ export default function StartTracker({ projectId }: StartTrackerProps) {
   const variant = status === 'active' ? 'danger' : 'success';
   const icon = actionLoading
     ? <Spinner animation="border" size="sm" className="me-2" />
-    : status === 'active' ? <img className='pause-icon' src="/assets/images/break-icon.png" alt="" /> : <FaPlay />;
+    : status === 'active' ? <FaPause /> : <FaPlay />;
 
   return (
     <button
       onClick={toggle}
-      className={`btn d-flex align-items-center tracker-btn gap-2`}
+      className={`btn btn-sm btn-${variant} d-flex align-items-center`}
       disabled={actionLoading}
       title={status === 'active' ? 'Pause' : 'Start'}
     >
-      <span className="ms-2 text-white fw-semibold" style={{ fontFamily: 'monospace' }}>{formatTime(seconds)}</span>
-      <div className="trk-play-icon">
       {icon}
-
-      </div>
+      <span className="ms-2" style={{ fontFamily: 'monospace' }}>{formatTime(seconds)}</span>
     </button>
   );
 }

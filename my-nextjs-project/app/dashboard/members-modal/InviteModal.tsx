@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 
-import "bootstrap/dist/css/bootstrap.min.css";
+
 export default function InviteModal({ show, handleClose, handleInvite }: {
     show: boolean;
     handleClose: () => void;

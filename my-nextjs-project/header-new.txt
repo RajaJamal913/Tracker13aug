@@ -28,7 +28,7 @@ export default function Header() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    router.push("/userLogin");
+    router.push("/user-login");
   };
 
   const items = [
@@ -59,7 +59,7 @@ export default function Header() {
     <header id="header" className="header d-flex align-items-center">
       <div className="header-inner">
         <div className="welcome-wrapper-main d-flex align-items-center gap-2">
-          { <StartTracker /> }
+          {/* <StartTracker /> */}
           <div className="d-flex align-items-center gap-2 d-none">
             <div className="header-welcome-wrapper">
               <Image

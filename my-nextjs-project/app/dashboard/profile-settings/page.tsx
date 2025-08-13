@@ -1,6 +1,4 @@
 'use client';
-export const dynamic = "force-dynamic";
-import "bootstrap/dist/css/bootstrap.min.css";
 import React, { useState, useEffect } from 'react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 import Cookies from 'js-cookie';

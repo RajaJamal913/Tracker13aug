@@ -1,14 +1,13 @@
 "use client";
 export const dynamic = 'force-dynamic';
-
 import WeeklyWorkingHoursChart from '@/components/weeklyworkingreport/page';
-import "bootstrap/dist/css/bootstrap.min.css";
 import TasksDonutChart from '@/components/reporting/TasksDonutChart/page';
 import ProjectsDonutChart from '@/components/reporting/ProjectsDonutChart/page';
 import SummaryCards from '@/components/reporting/SummaryCards/page';
 import Attendance from '@/components/reporting/Attendance/page';
 import TasksList from '@/components/reporting/TasksList/page';
 import FilterMultiSelects from '@/components/FilterMultiSelects';
+
 export default function reporting() {
   return (
     <div className="container py-4">

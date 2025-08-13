@@ -13,7 +13,6 @@ import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 import { MultiSelect } from 'primereact/multiselect';
 import dayjs from 'dayjs';  // npm install dayjs
-import FilterMultiSelects from '@/components/FilterMultiSelects';  // npm install dayjs
 
 // Base URL for API
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -23,17 +22,17 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<'daily' | 'shifts'>('daily');
 
   // Data
-  const [dailyData, setDailyData] = useState<{ member: string; total: string }[]>([]);
-  const [dailyShifts, setDailyShifts] = useState<any[]>([]);
-  const [shiftsData, setShiftsData] = useState<any[]>([]);
-  const [membersList, setMembersList] = useState<{ label: string; value: number }[]>([]);
+  const [dailyData, setDailyData]         = useState<{ member: string; total: string }[]>([]);
+  const [dailyShifts, setDailyShifts]     = useState<any[]>([]);
+  const [shiftsData, setShiftsData]       = useState<any[]>([]);
+  const [membersList, setMembersList]     = useState<{ label: string; value: number }[]>([]);
 
   // UI state
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [showModal, setShowModal]         = useState(false);
+  const [modalLoading, setModalLoading]   = useState(false);
+  const [modalError, setModalError]       = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -117,7 +116,7 @@ export default function AttendancePage() {
 
     const shiftsFetch = fetch(
       `${API_BASE}/api/shifts/tracked/?date=${TODAY}`,
-      { headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` } }
+      { headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` }}
     ).then(r => r.ok ? r.json() : Promise.reject(r.statusText));
 
     Promise.all([dailyFetch, shiftsFetch])
@@ -189,19 +188,8 @@ export default function AttendancePage() {
 
   return (
     <div className="container-fluid px-0 mt-5">
-   <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
-        <h2 className="page-heading-wrapper">Attendance</h2>
-        <div className='d-flex gap-2 flex-wrap'>
-          {/* <button className="btn g-btn me-2">
-            +Schedule
-          </button> */}
-         
-
-          
-        </div>
-      </div>
       {/* Tabs */}
-      <div className="tabContainer profile-settings-tabs-wrapper mb-4">
+      <div className="multi-style tabContainer profile-settings-tabs-wrapper mb-4">
         <div className="um-btns-wrap d-flex">
           {(['daily', 'shifts'] as const).map(tab => (
             <button
@@ -214,10 +202,7 @@ export default function AttendancePage() {
           ))}
         </div>
       </div>
-      <div className="mb-4">
-        <FilterMultiSelects />
 
-      </div>
       {/* Main Content */}
       <div className="cardWrappers">
         {loading ? (
@@ -227,31 +212,21 @@ export default function AttendancePage() {
         ) : activeTab === 'daily' ? (
           <>
             {/* Daily totals */}
-            <div className="g-table-wrap table-responsive gt-scroll">
-              <table className='table g-table'>
-                <thead>
-                  <tr>
-                    <th>Member</th>
-                    <th>Status</th>
-                    <th>Shift Start</th>
-                    <th>Member</th>
-                    <th>Member</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyData.map((r, i) => (
-                    <tr key={i}>
-                      <td>{r.member}</td>
-                      <td>{r.total}</td>
-                      </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="table-responsive g-table-wrapper gt-scroll">
+
             </div>
+            <table className='table g-table'>
+              <thead>
+                <tr><th>Member</th><th>Total</th></tr>
+              </thead>
+              <tbody>
+                {dailyData.map((r, i) => (
+                  <tr key={i}><td>{r.member}</td><td>{r.total}</td></tr>
+                ))}
+              </tbody>
+            </table>
 
-
-            {/* Today’s shifts */}
+           {/* Today’s shifts */}
             <div className="row">
             <h5 className="mt-4">Shifts for {TODAY}</h5>
  {dailyShifts.length > 0 ? dailyShifts.map(s => (
@@ -269,21 +244,14 @@ export default function AttendancePage() {
               <p>No shifts scheduled for today.</p>
             )}
             </div>
-            
-           
           </>
         ) : (
           <>
-          <div className="row">
-            <div className="col-lg-12 text-end">
-
-<button className="btn g-btn mb-3 ms-auto" style={{width:"fit-content"}} onClick={() => setShowModal(true)}>
+            <button className="mb-3 btn g-btn" onClick={() => setShowModal(true)}>
               Create Shift
             </button>
-            </div>
             {shiftsData.map(s => (
-              <div className="col-lg-4">
-                <div key={s.id} className="card shift_card_1 border-0 g-shadow mb-2 p-3">
+              <div key={s.id} className="card shift_card_1 p-3 mb-2">
                 <h5>{s.name}</h5>
                 <div>Members: {s.member_usernames.join(', ')}</div>
                 <div>
@@ -298,19 +266,15 @@ export default function AttendancePage() {
                   {s.repeat_option !== 'none' ? ` until ${s.repeat_until}` : ''}
                 </div>
               </div>
-              </div>
-              
             ))}
-          </div>
-            
           </>
         )}
       </div>
 
       {/* Create Shift Modal */}
-      <Modal  contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper' show={showModal} onHide={() => setShowModal(false)}>
+      <Modal contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper' show={showModal} onHide={() => setShowModal(false)}>
         <Modal.Header closeButton>
-          <Modal.Title>Create Shifts</Modal.Title>
+          <Modal.Title>Create Shift</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {modalError && <Alert variant="danger">{modalError}</Alert>}
@@ -407,6 +371,7 @@ export default function AttendancePage() {
                   </option>
                 ))}
               </Form.Select>
+              
             </Form.Group>
 
             <Form.Group className="mb-3">

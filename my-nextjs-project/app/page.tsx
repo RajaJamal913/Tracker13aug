@@ -15,40 +15,34 @@ export default function LandingPage() {
   return (
     <div className="landing-main">
       {/* Waves */}
-      <svg
-        className="header-wave-1"
-        xmlns="http://www.w3.org/2000/svg"
-        width="1440"
-        height="190"
-        viewBox="0 0 1440 190"
-        fill="none"
-      >
-        <path
-          d="M208.466 103.215C127.071 75.9447 81.4027 76.6842 0 103.215V0H1440V126C1434.67 171.982 1286.9 197.667 1228 186.5C1098.46 161.94 997.816 101.264 954.524 89.6866C796.151 47.3317 705.656 44.8782 539.292 103.215C413.579 146.493 340.982 144.314 208.466 103.215Z"
-          fill="#9A4AFD"
-        />
-      </svg>
+   
+<svg  className="header-wave-1" width="1601" height="179" viewBox="0 0 1601 179" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M232.103 122.45C141.213 90.3102 90.2161 91.1818 -0.683594 122.45V0.804688H1607.32V149.303C1562.32 176.64 1453.72 181.868 1385.72 176.64C1229.39 164.623 1117.01 136.095 1068.66 122.45C891.815 72.5319 815.995 57.9616 601.526 122.45C461.147 173.456 380.08 170.887 232.103 122.45Z" fill="url(#paint0_linear_29_5221)"/>
+<defs>
+<linearGradient id="paint0_linear_29_5221" x1="-0.683594" y1="89.6266" x2="1607.32" y2="89.6266" gradientUnits="userSpaceOnUse">
+<stop offset="0.5" stop-color="#9C51C7"/>
+</linearGradient>
+</defs>
+</svg>
 
-      <svg
-        className="header-wave-2"
-        xmlns="http://www.w3.org/2000/svg"
-        width="1440"
-        height="210"
-        viewBox="0 0 1440 210"
-        fill="none"
-      >
-        <path
-          d="M290.615 55.0317C216.06 188.563 154.024 224.488 0 205.118V0H1440V95.0547V112.5L1174.53 190.109C1061.99 225.069 951.983 125.5 883.34 112.5C814.697 99.5 630.483 236.837 514.572 112.5L290.615 55.0317Z"
-          fill="#FFBB58"
-        />
-      </svg>
+ 
+      <svg className="header-wave-2" width="1601" height="235" viewBox="0 0 1601 235" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path opacity="0.95" d="M323.836 51.7684C240.584 209.143 171.31 251.483 -0.683594 228.654V-13.0898H1607.32V98.938V119.498L1310.87 210.966C1185.2 252.167 1062.36 134.82 985.713 119.498C909.062 104.177 703.355 266.037 573.922 119.498L323.836 51.7684Z" fill="url(#paint0_linear_29_5220)"/>
+<defs>
+<linearGradient id="paint0_linear_29_5220" x1="-0.704553" y1="-13.0858" x2="1607.27" y2="-13.0858" gradientUnits="userSpaceOnUse">
+<stop stop-color="#E79D5A"/>
+<stop offset="1" stop-color="#F2D05F"/>
+</linearGradient>
+</defs>
+</svg>
+
 
       {/* Header */}
-      <header className="landing-header position-relative z-3 pt-3">
-        <nav className="navbar navbar-expand-lg navbar-dark">
+      <header className="landing-header position-relative z-3">
+        <nav className="navbar navbar-expand-lg navbar-dark border-bottom">
           <div className="container">
             <a className="navbar-brand" href="#">
-              <img className="footer-logo" src="/assets/images/landing-logo.png" alt="" />
+              <img className="footer-logo" src="/assets/images/tracker-logo-latest.png" alt="" />
             </a>
             <button
               className="navbar-toggler"
@@ -76,7 +70,7 @@ export default function LandingPage() {
                   </a>
                 </li>
                 <li className="nav-item">
-                  <a className="btn btn-outline-light ms-3" href="/user-signup">
+                  <a className="btn btn-outline-light ms-3" href="/UserSignup" style={{border:"2px solid"}}>
                     Sign up
                   </a>
                 </li>
@@ -87,25 +81,25 @@ export default function LandingPage() {
       </header>
 
       {/* Wave Section */}
-      <section className="wave-section pt-lg-5 pb-lg-5 position-relative z-2">
+      <section className="wave-section pt-lg-5 pb-lg-5 position-relative z-2 overflow-hidden">
         <div className="container pt-lg-5">
           <div className="row align-items-center">
             <div className="col-md-6 text-dark mb-4">
-              <h2 className="fw-bold">Your All-in-One Productivity Tracker</h2>
+              <h2 className="fw-bold landing-top-title">Your All-in-One Productivity Tracker</h2>
               <p className="mt-3">
                 This tracker helps you stay on top of your goals in a simple and stress-free way.
                 Whether you’re working on a project, or just trying to be more consistent, it keeps
                 everything in one place so you can see your progress, stay motivated, and actually
                 stick with it.
               </p>
-              <a href="#" className="btn btn-custom mt-3">
+              <a href="#" className="btn g-btn mt-3">
                 Get Started
               </a>
             </div>
             <div className="col-md-6 text-center">
               <Image
-                src="/assets/images/landing-trkr.png"
-                alt="Illustration"
+                src="/assets/images/landing-main-graphic.webp"
+                alt="Illustrationsssssss"
                 className="img-fluid"
                 width={400}
                 height={300}
@@ -114,6 +108,9 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+
+        <img className="landing-line-graphic" src="/assets/images/landing-line-graphic.png" alt="" />
+        <img className="landing-blob-graphic" src="/assets/images/landing-blob-graphic.png" alt="" />
       </section>
       <footer className=" text-white py-4" >
         <div className="container">
@@ -189,7 +186,6 @@ export default function LandingPage() {
         .landing-header {
           z-index: 9;
           position: relative;
-          padding-top: 15px;
         }
         .header-wave-1,
         .header-wave-2 {
@@ -224,7 +220,6 @@ svg.header-wave-2 {
 }
     .landing-header {
      z-index: 99 !important;
-    padding-top: 15px !important;
     position: relative !important;
 }
     .wave-section {
@@ -239,10 +234,7 @@ svg.header-wave-2 {
     color: white;
     border: none;
 }
-    footer {
-    
-    background: linear-gradient(282deg, rgb(150, 72, 246), rgb(92, 44, 151));
-}
+
     .footer-logo {
     max-width: 230px;
     width: 100%;
@@ -251,6 +243,7 @@ svg.header-wave-2 {
     footer {
     background: linear-gradient(282deg, #9a4afd, #955add, #6e34b5);
     background: linear-gradient(282deg, rgb(150, 72, 246), rgb(92, 44, 151));
+    background: linear-gradient(90deg, #7C29AB 0%, #9C51C7 50%, #5C2C97 100%);
 }
 
 img.jsx-f98fbb6bd46d29de.footer-logo {
@@ -282,8 +275,12 @@ img.jsx-f98fbb6bd46d29de.footer-logo {
 }
 
 .social-icons-wrap>a:hover {
-    background: #471585;
+    background: white;
     border: 0px solid;
+    color:#7c29ab !important;
+}
+.social-icons-wrap>a:hover svg path {
+     fill: #7c29ab!important;
 }
       `}</style>
     </div>

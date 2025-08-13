@@ -14,32 +14,45 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("username", "email", "phone", "password")
+        fields = ("username", "email", "password")
 
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
-            phone=validated_data.get("phone", ""),
             password=validated_data["password"],
+            is_active=True 
         )
-        # create token
-        Token.objects.create(user=user)
+   
         return user
+
+from django.contrib.auth import authenticate
+# serializers.py
+from django.contrib.auth import authenticate
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField()
 
     def validate(self, data):
-        from django.contrib.auth import authenticate
-        user = authenticate(
-            username=data["username"], password=data["password"]
-        )
-        if not user:
-            raise serializers.ValidationError("Invalid credentials.")
+        username = data.get('username')
+        password = data.get('password')
+        
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Invalid username or password")
+        
+        # Manually verify password since authenticate() is failing
+        if not user.check_password(password):
+            raise serializers.ValidationError("Invalid username or password")
+        
+        if not user.is_active:
+            raise serializers.ValidationError("User account is disabled")
+        
         data["user"] = user
         return data
+
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):

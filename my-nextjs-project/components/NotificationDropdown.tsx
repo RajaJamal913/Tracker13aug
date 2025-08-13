@@ -107,7 +107,7 @@ export default function NotificationDropdown() {
   return (
     <Dropdown className="h-notify-bell" onToggle={handleToggle} ref={dropdownRef}>
       <Dropdown.Toggle variant="link" className="nav-link nav-icon position-relative ">
-        <Image src="/assets/images/h-bell-icon-new.png" alt="Notifications" width={18} height={18}/>
+        <Image src="/assets/images/h-bell-icon-new.webp" alt="Notifications" width={24} height={24}/>
         {loading ? (
           <Spinner animation="border" size="sm" className="position-absolute top-0 end-0" />
         ) : unreadCount > 0 ? (

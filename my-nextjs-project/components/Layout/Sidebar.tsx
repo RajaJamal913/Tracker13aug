@@ -128,7 +128,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
           </li>
           <li className=" nav-link p-2 text-blue-700">
 
-            <Link href="/dashboard/timesheet/timerequest"> 
+            <Link href="/dashboard/timesheet/view&edit-timesheet"> 
            <FaClock />
            <span>Time Request</span></Link>
           </li>

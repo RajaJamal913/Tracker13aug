@@ -4,7 +4,7 @@ from rest_framework import viewsets, permissions, filters, status
 from rest_framework.response import Response
 from .models import TimeRequest, Notification
 from .serializers import TimeRequestSerializer, NotificationSerializer
-
+from rest_framework.authentication import TokenAuthentication
 class TimeRequestViewSet(viewsets.ModelViewSet):
     """
     - Regular users may CREATE & LIST only their own requests.
@@ -13,6 +13,7 @@ class TimeRequestViewSet(viewsets.ModelViewSet):
     queryset = TimeRequest.objects.all()
     serializer_class = TimeRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication] 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["status", "project__name", "task__title"]
     ordering_fields = ["created_at", "date"]

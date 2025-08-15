@@ -20,8 +20,8 @@ import "primeicons/primeicons.css";
 interface TimeRequest {
   id: number;
   user: number;
-  project: { id: number; name: string };
-  task: { id: number; title: string };
+  project: number | { id: number; name: string };
+  task: number | { id: number; title: string };
   date: string;
   time_from: string;
   time_to: string;
@@ -49,6 +49,29 @@ function getCookie(name: string) {
   return match ? match[2] : "";
 }
 
+function readToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("token") || "";
+  if (!raw) return null;
+  return raw.replace(/^"|"$/g, "");
+}
+
+function getAuthOptions() {
+  const token = readToken();
+  const csrftoken = getCookie("csrftoken");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Token ${token}`;
+    return { headers } as const;
+  }
+  if (csrftoken) {
+    headers["X-CSRFToken"] = csrftoken;
+  }
+  return { headers, credentials: "include" as const };
+}
+
 export default function TimeRequestTabs() {
   const [activeTab, setActiveTab] = useState<"PENDING" | "APPROVED" | "REJECTED">("PENDING");
   const [requests, setRequests] = useState<Record<string, TimeRequest[]>>({
@@ -57,6 +80,8 @@ export default function TimeRequestTabs() {
     REJECTED: [],
   });
   const [projects, setProjects] = useState<Project[]>([]);
+  // taskMap caches task details by id when API returned only numeric ids
+  const [taskMap, setTaskMap] = useState<Record<number, Task>>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -71,28 +96,81 @@ export default function TimeRequestTabs() {
     status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED",
   });
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const csrftoken = getCookie("csrftoken");
+  // helper to resolve project name whether API returned id or object
+  const getProjectName = (r: TimeRequest) => {
+    if (!r.project && r.project !== 0) return "—";
+    if (typeof r.project === "object") return r.project.name ?? "—";
+    // number: try to find in loaded projects
+    const p = projects.find((pp) => pp.id === r.project);
+    return p ? p.name : String(r.project);
+  };
+
+  // helper to resolve task title whether API returned id or object
+  const getTaskTitle = (r: TimeRequest) => {
+    if (!r.task && r.task !== 0) return "—";
+    if (typeof r.task === "object") return r.task.title ?? "—";
+    const t = taskMap[r.task as number];
+    return t ? t.title : String(r.task);
+  };
+
+  // After loading requests, fetch missing task details (when API returns task as id)
+  const populateTaskMap = async (list: TimeRequest[]) => {
+    // collect numeric task ids
+    const numericTaskIds = Array.from(
+      new Set(
+        list
+          .map((r) => (typeof r.task === "number" ? (r.task as number) : null))
+          .filter((id): id is number => id !== null)
+      )
+    ).filter((id) => !(id in taskMap)); // skip already cached
+    if (numericTaskIds.length === 0) return;
+
+    try {
+      const opts = getAuthOptions();
+      const fetches = numericTaskIds.map((id) =>
+        fetch(`${API_BASE}/tasks/${id}/`, { ...opts }).then(async (res) => {
+          if (!res.ok) {
+            throw new Error(`task fetch ${id} failed ${res.status}`);
+          }
+          return res.json();
+        })
+      );
+      const results = await Promise.all(fetches);
+      setTaskMap((m) => {
+        const copy = { ...m };
+        results.forEach((t: any) => {
+          if (t && t.id) copy[t.id] = t;
+        });
+        return copy;
+      });
+    } catch (err) {
+      console.warn("populateTaskMap failed:", err);
+    }
+  };
 
   // Load all time-requests
   const loadRequests = async () => {
     setLoading(true);
     try {
+      const opts = getAuthOptions();
+      console.log("loadRequests opts:", opts);
       const res = await fetch(`${API_BASE}/time-requests/`, {
         method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrftoken,
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
+        ...opts,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      console.log("loadRequests status:", res.status);
+      if (res.status === 401) {
+        console.warn("Unauthorized (401) when loading time requests. Check token or auth config.");
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
       const json = await res.json();
       const list: TimeRequest[] = Array.isArray(json) ? json : json.results ?? [];
       const grouped = { PENDING: [], APPROVED: [], REJECTED: [] } as Record<string, any>;
       list.forEach((r) => grouped[r.status].push(r));
       setRequests(grouped);
+
+      // fetch any missing task details (if API returned task ids rather than nested objects)
+      await populateTaskMap(list);
     } catch (e) {
       console.error("loadRequests failed:", e);
       setRequests({ PENDING: [], APPROVED: [], REJECTED: [] });
@@ -104,22 +182,21 @@ export default function TimeRequestTabs() {
   // Load projects
   const loadProjects = async () => {
     try {
+      const opts = getAuthOptions();
+      console.log("loadProjects opts:", opts);
       const res = await fetch(`${API_BASE}/projects/`, {
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrftoken,
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
+        ...opts,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      console.log("loadProjects status:", res.status);
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
       setProjects(await res.json());
     } catch (e) {
       console.error("loadProjects failed:", e);
+      setProjects([]);
     }
   };
 
-  // Load tasks whenever project changes
+  // Load tasks whenever project changes (for the form's task dropdown)
   useEffect(() => {
     if (!formData.project) {
       setTasks([]);
@@ -127,15 +204,12 @@ export default function TimeRequestTabs() {
     }
     (async () => {
       try {
+        const opts = getAuthOptions();
         const res = await fetch(`${API_BASE}/tasks/?project=${formData.project!.id}`, {
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrftoken,
-            ...(token ? { Authorization: `Token ${token}` } : {}),
-          },
+          ...opts,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        console.log("loadTasks status:", res.status);
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
         setTasks(await res.json());
       } catch (e) {
         console.error("loadTasks failed:", e);
@@ -145,6 +219,7 @@ export default function TimeRequestTabs() {
   }, [formData.project]);
 
   useEffect(() => {
+    // initial load
     loadRequests();
     loadProjects();
   }, []);
@@ -156,38 +231,70 @@ export default function TimeRequestTabs() {
   };
 
   const openEdit = (r: TimeRequest) => {
+    // normalize incoming shapes if they are objects or ids
     setEditRequest(r);
-    setFormData({ project: r.project, task: r.task, date: r.date, timeFrom: r.time_from, timeTo: r.time_to, description: r.description, status: r.status });
+    setFormData({
+      project: typeof r.project === "object" ? r.project : (projects.find(p => p.id === (r.project as number)) ?? null),
+      task: typeof r.task === "object" ? r.task : (taskMap[(r.task as number)] ?? null),
+      date: r.date,
+      timeFrom: r.time_from.slice(0, 5),
+      timeTo: r.time_to.slice(0, 5),
+      description: r.description,
+      status: r.status,
+    });
     setShowModal(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!formData.project || !formData.task) {
+      console.error("project and task required");
+      return;
+    }
+
     const [h1, m1] = formData.timeFrom.split(":");
     const [h2, m2] = formData.timeTo.split(":");
     const payload = {
-      project: formData.project!.id,
-      task: formData.task!.id,
+      project: formData.project.id,
+      task: formData.task.id,
       date: formData.date,
-      time_from: `${h1.padStart(2, "0")} : ${m1.padStart(2, "0")} : 00`,
-      time_to: `${h2.padStart(2, "0")} : ${m2.padStart(2, "0")} : 00`,
+      time_from: `${h1.padStart(2, "0")}:${m1.padStart(2, "0")}:00`,
+      time_to: `${h2.padStart(2, "0")}:${m2.padStart(2, "0")}:00`,
       description: formData.description,
       status: formData.status,
     };
+
     const url = editRequest ? `${API_BASE}/time-requests/${editRequest.id}/` : `${API_BASE}/time-requests/`;
     const method = editRequest ? "PATCH" : "POST";
-    const res = await fetch(url, {
-      method,
-      credentials: "include",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken, ...(token ? { Authorization: `Token ${token}` } : {}) },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      console.error("Save failed", await res.text());
-      return;
+
+    try {
+      const opts = getAuthOptions();
+      console.log("Submitting to", url, "opts:", opts, "payload:", payload);
+      const res = await fetch(url, {
+        method,
+        ...opts,
+        body: JSON.stringify(payload),
+      });
+
+      const text = await res.text();
+      console.log("Save status:", res.status, "response:", text);
+
+      if (!res.ok) {
+        let message = text;
+        try {
+          const j = JSON.parse(text);
+          message = JSON.stringify(j);
+        } catch (err) {}
+        throw new Error(`Save failed: ${res.status} ${message}`);
+      }
+
+      await loadRequests();
+      setShowModal(false);
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message);
     }
-    await loadRequests();
-    setShowModal(false);
   };
 
   const renderTable = (status: string) => (
@@ -208,15 +315,17 @@ export default function TimeRequestTabs() {
         {requests[status].map((r) => (
           <tr key={r.id}>
             <td>{r.user}</td>
-            <td>{r.project.name}</td>
-            <td>{r.task.title}</td>
+            <td>{getProjectName(r)}</td>
+            <td>{getTaskTitle(r)}</td>
             <td>{r.date}</td>
             <td>{r.requested_duration}</td>
             <td>{`${r.time_from} - ${r.time_to}`}</td>
             <td>{r.status}</td>
             {status === "PENDING" && (
               <td>
-                <Button size="sm" variant="outline-primary" onClick={() => openEdit(r)}>Edit</Button>
+                <Button size="sm" variant="outline-primary" onClick={() => openEdit(r)}>
+                  Edit
+                </Button>
               </td>
             )}
           </tr>
@@ -236,9 +345,15 @@ export default function TimeRequestTabs() {
       ) : (
         <>
           <Nav variant="tabs" activeKey={activeTab} onSelect={(k) => setActiveTab(k as any)}>
-            <Nav.Item><Nav.Link eventKey="PENDING">Pending</Nav.Link></Nav.Item>
-            <Nav.Item><Nav.Link eventKey="APPROVED">Approved</Nav.Link></Nav.Item>
-            <Nav.Item><Nav.Link eventKey="REJECTED">Rejected</Nav.Link></Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="PENDING">Pending</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="APPROVED">Approved</Nav.Link>
+            </Nav.Item>
+            <Nav.Item>
+              <Nav.Link eventKey="REJECTED">Rejected</Nav.Link>
+            </Nav.Item>
           </Nav>
           <h5 className="mt-4">Time Request Data</h5>
           {renderTable(activeTab)}
@@ -257,10 +372,14 @@ export default function TimeRequestTabs() {
                 <Dropdown
                   value={formData.project}
                   options={projects}
-                  onChange={(e: any) => { setFormData({ ...formData, project: e.value, task: null }); }}
+                  onChange={(e: any) => {
+                    setFormData({ ...formData, project: e.value, task: null });
+                  }}
                   optionLabel="name"
                   placeholder="Select a Project"
-                  filter showClear className="w-100"
+                  filter
+                  showClear
+                  className="w-100"
                 />
               </Col>
               <Col md={6}>
@@ -271,7 +390,9 @@ export default function TimeRequestTabs() {
                   onChange={(e: any) => setFormData({ ...formData, task: e.value })}
                   optionLabel="title"
                   placeholder="Select a Task"
-                  filter showClear className="w-100"
+                  filter
+                  showClear
+                  className="w-100"
                   disabled={!formData.project}
                 />
               </Col>
@@ -286,8 +407,6 @@ export default function TimeRequestTabs() {
                 <Form.Control as="textarea" rows={3} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
               </Col>
             </Row>
-          
-
 
             <Row className="mb-3">
               <Col md={6}>

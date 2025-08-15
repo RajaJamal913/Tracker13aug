@@ -45,7 +45,7 @@ export default function Header() {
     {
       label: "Notifications",
       icon: "pi pi-bell",
-      command: () => router.push("/notifications"),
+      command: () => router.push("<NotificationDropdown/>"),
     },
     { separator: true },
     {
@@ -77,7 +77,7 @@ export default function Header() {
 
         <nav className="header-nav ms-auto">
           <ul className="d-flex align-items-center list-unstyled m-0">
-            {/* <NotificationDropdown /> */}
+            {<NotificationDropdown /> }
 
             <li className="nav-item dropdown ms-3">
               <Link

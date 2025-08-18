@@ -89,7 +89,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
 
 
   return (
-    <aside className="g-scroll text-white px-3 position-relative">
+    <aside className="g-scroll text-white px-3 position-relative d-flex flex-column gap-3">
       <button className="sidebar_switch_icon">
         <svg width="20" height="36" viewBox="0 0 20 36" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.5 3L17.5 18L2.5 33" stroke="black" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
@@ -300,7 +300,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             <ul className="pl-6 space-y-2">
               <li className="flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all d-flex justify-content-between align-items-center gap-2">
                 <FaUser />
-                <Link href="/dashboard/people/members" className="underline text-blue">
+                <Link href="/dashboard/members-new" className="underline text-blue">
                   Member
                 </Link>
               </li>
@@ -327,7 +327,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
 
 
           <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link">
-            <Link href="/dashboard/tasks">
+            <Link href="/dashboard/members-new/add-members ">
             <FaUser />
             <span>Member</span>
             </Link>

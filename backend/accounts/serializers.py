@@ -30,28 +30,34 @@ from django.contrib.auth import authenticate
 # serializers.py
 from django.contrib.auth import authenticate
 
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
-    password = serializers.CharField()
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        username = data.get('username')
-        password = data.get('password')
-        
+        email = data.get("email")
+        password = data.get("password")
+
+        # case-insensitive lookup
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise serializers.ValidationError("Invalid username or password")
-        
-        # Manually verify password since authenticate() is failing
+            raise serializers.ValidationError({"non_field_errors": ["Invalid email or password."]})
+
         if not user.check_password(password):
-            raise serializers.ValidationError("Invalid username or password")
-        
+            raise serializers.ValidationError({"non_field_errors": ["Invalid email or password."]})
+
         if not user.is_active:
-            raise serializers.ValidationError("User account is disabled")
-        
+            raise serializers.ValidationError({"non_field_errors": ["User account is disabled."]})
+
         data["user"] = user
         return data
+
 
 User = get_user_model()
 

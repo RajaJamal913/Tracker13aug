@@ -220,7 +220,7 @@ aside.ps-3.py-4.text-white.h-100 {
 }
 
 header#header {
-  background: #ffffff;
+  
   /* box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px; */
   position: sticky;
   top: 0px;
@@ -287,7 +287,7 @@ aside ul li a {
   z-index: 997;
   height: auto;
   /* box-shadow: 0px 2px 20px rgba(1, 41, 112, 0.1); */
-  background-color: #fff;
+
 
   /* Toggle Sidebar Button */
   /* Search Bar */
@@ -1691,7 +1691,10 @@ button.sidebar_switch_icon>svg>path {
 justify-content: flex-end !important;
 }
 
+.content-col {
 
+    background: #edffff;
+}
 
 
 /* header  */
@@ -2332,4 +2335,11 @@ h1.table-heading {
   bottom: 20%;
   left: 9%;
   width: 80px;
+}
+
+.db-home-sec-divide {
+    background: #fff;
+    padding: 30px 0;
+    border: 1px solid #acacac;
+    border-radius: 15px;
 }

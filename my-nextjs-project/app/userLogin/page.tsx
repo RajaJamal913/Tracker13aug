@@ -18,6 +18,7 @@ export default function LoginPage() {
 
   // --- Login state
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(""); // visible message to user
@@ -74,7 +75,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_BASE}/api/auth/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
         // credentials: "include", // enable if you use session auth + CSRF cookies
       });
 
@@ -234,17 +235,9 @@ export default function LoginPage() {
                 <form onSubmit={handleSubmit}>
                   <div className="mb-3">
                     <label className="form-label text-muted" htmlFor="username">
-                      UserName
+                      UserEmail
                     </label>
-                    <input
-                      id="username"
-                      type="text"
-                      className="form-control rounded-0"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      autoComplete="username"
-                    />
+                    <input id="email" type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
                   </div>
 
                   <div className="mb-4">

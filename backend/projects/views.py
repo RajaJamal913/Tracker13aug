@@ -13,8 +13,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 
-from .models import Project, Member, Invitation
-from .serializers import ProjectSerializer, MemberSerializer, InvitationSerializer
+from .models import Project, Member, Invitation, Team
+from .serializers import ProjectSerializer, MemberSerializer, InvitationSerializer, TeamSerializer
 
 logger = logging.getLogger(__name__)
 User = None
@@ -171,6 +171,11 @@ class InvitationListCreateView(generics.ListCreateAPIView):
     """
     GET /api/invites/  -> list invites relevant to the current user (created_by or for projects they belong to)
     POST /api/invites/ -> create invite (created_by is set to request.user)
+
+    Supports special payload:
+      { "email": "...", "role": "...", "create_project": true, "project_name": "New Project" }
+    When create_project is true, a Project will be created and the invitation will be attached to it.
+    The creation is performed in a transaction so either both project+invite are created or none.
     """
     serializer_class = InvitationSerializer
     permission_classes = [IsAuthenticated]
@@ -182,13 +187,43 @@ class InvitationListCreateView(generics.ListCreateAPIView):
         ).distinct().select_related("project", "created_by")
 
     def perform_create(self, serializer):
-        invitation = serializer.save(created_by=self.request.user)
-        # attempt to send email but don't fail creation if send fails
-        try:
-            from .utils import send_invite_email_plain
-            send_invite_email_plain(invitation)
-        except Exception:
-            logger.exception("Failed to send invite email for invitation id=%s", getattr(invitation, "pk", None))
+        """
+        If request.data contains create_project=true and project_name is provided,
+        create the project first (and attach the requesting user), then save the invitation
+        referencing the new project. Otherwise, just create the invitation in the normal way.
+        """
+        request = self.request
+        data = getattr(request, "data", {}) or {}
+        create_project_flag = data.get("create_project") or data.get("createProject") or False
+        project_name = data.get("project_name") or data.get("projectName") or None
+
+        # Ensure we run creation in a transaction to avoid half-created state
+        if create_project_flag:
+            if not project_name or str(project_name).strip() == "":
+                raise ValueError("project_name is required when create_project is true")
+
+            with transaction.atomic():
+                # Create the project and attach the requesting user
+                project = Project.objects.create(name=str(project_name).strip(), created_by=request.user)
+                assign_user_to_project(project, request.user)
+
+                # Save invitation pointing to created project
+                invitation = serializer.save(created_by=request.user, project=project)
+
+                # attempt to send email but don't fail creation if send fails
+                try:
+                    from .utils import send_invite_email_plain
+                    send_invite_email_plain(invitation)
+                except Exception:
+                    logger.exception("Failed to send invite email for invitation id=%s", getattr(invitation, "pk", None))
+        else:
+            # Standard behavior
+            invitation = serializer.save(created_by=self.request.user)
+            try:
+                from .utils import send_invite_email_plain
+                send_invite_email_plain(invitation)
+            except Exception:
+                logger.exception("Failed to send invite email for invitation id=%s", getattr(invitation, "pk", None))
 
 
 class AcceptInvitationView(APIView):
@@ -346,3 +381,32 @@ class AcceptInvitationView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+class TeamListCreateView(generics.ListCreateAPIView):
+    """
+    GET /api/teams/ -> teams visible to the current user
+    POST /api/teams/ -> create a team, accepts `name` and `member_ids` list
+    """
+    serializer_class = TeamSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return Team.objects.none()
+        return Team.objects.filter(Q(created_by=user) | Q(members__user=user)).distinct()
+
+
+class TeamDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET /api/teams/<pk>/
+    PUT/PATCH /api/teams/<pk>/
+    DELETE /api/teams/<pk>/
+    """
+    serializer_class = TeamSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or user.is_anonymous:
+            return Team.objects.none()
+        return Team.objects.filter(Q(created_by=user) | Q(members__user=user)).distinct()

@@ -2,23 +2,21 @@
 export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState } from "react";
-import { Table, Button, InputGroup, FormControl } from "react-bootstrap";
+import { Table, Button, InputGroup, FormControl, Spinner } from "react-bootstrap";
 import { FaCheckCircle, FaTimesCircle } from "react-icons/fa";
 import "primereact/resources/themes/lara-light-blue/theme.css";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 
 /**
- * Full Members + Invites page with auto-accept invite token handling.
+ * Members + Invites page with "Create new project" option in the project dropdown.
  *
- * How invite token is detected:
- *  - URL params: token, invite, invite_token
- *  - If user is authenticated (localStorage 'token'), an accept POST is sent immediately.
- *  - If not authenticated, token saved to localStorage 'pending_invite_token' and a banner is shown.
- *  - When localStorage 'token' is set (login), the script automatically tries to accept pending invite.
- *
- * Make sure your backend accepts POST /api/invites/accept/ with body { token: "<token>" }
- * and requires authentication (Authorization: Token <...>) to attach user to project.
+ * Notes:
+ * - inviteProjectId now can be number | "new" | null.
+ * - If "new" is chosen, user must provide newProjectName.
+ * - When sending invite for a new project, payload includes:
+ *     { email, role, project: null, project_name: "<name>", create_project: true }
+ *   Adapt this to match your backend contract.
  */
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api").replace(/\/$/, "");
@@ -58,7 +56,9 @@ export default function MembersPage() {
   // Invite form states
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("Member");
-  const [inviteProjectId, setInviteProjectId] = useState<number | null>(null);
+  // inviteProjectId can be number | 'new' | null
+  const [inviteProjectId, setInviteProjectId] = useState<number | "new" | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
@@ -150,10 +150,11 @@ export default function MembersPage() {
   useEffect(() => {
     const token = readToken();
     if (!token) {
+      // keep UI usable for unauthenticated users but still offer "Create new project"
+      // If you prefer to hide the projects list entirely for unauthenticated users,
+      // remove this block.
       setProjects([{ id: 1, name: "Getting Started with WewWizTracker" }]);
       setInviteProjectId((prev) => prev ?? 1);
-    } else {
-      // nothing: fetchProjects below will run
     }
     fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,12 +175,20 @@ export default function MembersPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data.map((p) => ({ id: p.id, name: p.name || p.title || String(p.id) })) : [];
-      setProjects(list.length ? list : [{ id: 1, name: "Getting Started with WewWizTracker" }]);
-      if (!inviteProjectId && list.length > 0) setInviteProjectId(list[0].id);
+      if (list.length) {
+        setProjects(list);
+        // only change inviteProjectId if it's null (first load)
+        setInviteProjectId((prev) => (prev === null ? list[0].id : prev));
+      } else {
+        // no existing projects -> default to "new project"
+        setProjects([]);
+        setInviteProjectId("new");
+      }
     } catch (err) {
       console.error("Error fetching projects:", err);
-      setProjects((prev) => (prev.length ? prev : [{ id: 1, name: "Getting Started with WewWizTracker" }]));
-      if (!inviteProjectId) setInviteProjectId(1);
+      // keep a small fallback so UI doesn't break; default to "new project" if no meaningful list
+      setProjects((prev) => (prev.length ? prev : []));
+      setInviteProjectId((prev) => (prev === null ? "new" : prev));
     } finally {
       setLoadingProjects(false);
     }
@@ -278,17 +287,24 @@ export default function MembersPage() {
   // -----------------------
   // Invite POST + optimistic handling
   // -----------------------
-  const postInvite = async (email: string, projectId: number, role: string) => {
+  const postInvite = async (email: string, projectId: number | "new", role: string, projectName?: string) => {
     const token = readToken();
     if (!token) throw new Error("No token found. User might not be authenticated.");
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Token ${token}`,
     };
+
+    // If projectId === 'new' include project_name and create_project flag.
+    const body: any =
+      projectId === "new"
+        ? { email, role, project: null, project_name: projectName ?? null, create_project: true }
+        : { email, role, project: projectId };
+
     const res = await fetch(`${API_BASE}/invites/`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ email, project: projectId, role }),
+      body: JSON.stringify(body),
     });
     return res;
   };
@@ -300,7 +316,13 @@ export default function MembersPage() {
       setInviteMessage("Please enter a valid email address.");
       return;
     }
-    if (!inviteProjectId) {
+
+    if (inviteProjectId === "new") {
+      if (!newProjectName || newProjectName.trim().length < 2) {
+        setInviteMessage("Please enter a name for the new project (at least 2 characters).");
+        return;
+      }
+    } else if (!inviteProjectId) {
       setInviteMessage("Please select a project.");
       return;
     }
@@ -323,8 +345,8 @@ export default function MembersPage() {
       tracked_seconds: 0,
       created_at: new Date().toISOString(),
       role: inviteRole,
-      project: inviteProjectId,
-      project_name: projects.find((p) => p.id === inviteProjectId)?.name ?? undefined,
+      project: inviteProjectId === "new" ? null : (inviteProjectId as number),
+      project_name: inviteProjectId === "new" ? newProjectName : projects.find((p) => p.id === inviteProjectId)?.name ?? undefined,
     };
 
     try {
@@ -348,7 +370,7 @@ export default function MembersPage() {
         return [invitedMember, ...prev];
       });
 
-      const res = await postInvite(inviteEmail, inviteProjectId, inviteRole);
+      const res = await postInvite(inviteEmail, inviteProjectId!, inviteRole, newProjectName);
 
       if (res.ok) {
         let body: any = null;
@@ -377,6 +399,11 @@ export default function MembersPage() {
 
         setInviteMessage("Invite sent successfully.");
         setInviteEmail("");
+        setNewProjectName("");
+
+        // If server created a new project, refresh projects list so it appears in the dropdown
+        await fetchProjects();
+
         // refresh members for canonical state (skip fetchInvites to avoid 405 issues unless backend supports it)
         await fetchMembers();
       } else {
@@ -406,7 +433,7 @@ export default function MembersPage() {
   };
 
   // -----------------------
-  // Accept invite token handling
+  // Accept invite token handling (unchanged)
   // -----------------------
   const acceptInviteToken = async (tokenToAccept: string) => {
     if (!tokenToAccept) return { ok: false, message: "no token" };
@@ -460,19 +487,16 @@ export default function MembersPage() {
     if (t) {
       const auth = readToken();
       if (auth) {
-        // user is authenticated — accept immediately (best-effort)
         (async () => {
           const { ok, message } = await acceptInviteToken(t);
           if (!ok) setInviteMessage(`Failed to accept invite token: ${message}`);
         })();
       } else {
-        // store pending token so after login we accept
         localStorage.setItem("pending_invite_token", t);
         setPendingInviteToken(t);
         setPendingInviteBanner("You have an invite — sign in or complete registration to accept it automatically.");
       }
     } else {
-      // also check if pending token is in localStorage (maybe from previous navigation)
       const pending = localStorage.getItem("pending_invite_token");
       if (pending) {
         setPendingInviteToken(pending);
@@ -490,11 +514,10 @@ export default function MembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen for storage changes (e.g., login sets localStorage.token) to accept pending invite
+  // Listen for storage changes (login) to accept pending invite
   useEffect(() => {
     const handler = (ev: StorageEvent) => {
       if (ev.key === "token" && ev.newValue) {
-        // user logged in in another tab or same tab; try to accept pending invite
         const pending = localStorage.getItem("pending_invite_token");
         if (pending) {
           (async () => {
@@ -513,7 +536,7 @@ export default function MembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Also poll quickly after mount to detect if login happened in same tab (some apps set token without triggering storage event)
+  // Poll quickly after mount to detect login in same tab
   useEffect(() => {
     const pending = localStorage.getItem("pending_invite_token");
     if (!pending) return;
@@ -524,7 +547,7 @@ export default function MembersPage() {
         if (!ok) setInviteMessage(`Failed to accept pending invite: ${message}`);
       }
     };
-    const id = setTimeout(check, 500); // small delay to allow login flow to finish
+    const id = setTimeout(check, 500);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -545,7 +568,7 @@ export default function MembersPage() {
     project: "-",
   }));
 
-  // invitedMembersDisplay (merge invites + members by email) — ensure we show project names (look up by id when needed)
+  // invitedMembersDisplay (merge invites + members by email)
   const invitedMembersDisplay: Member[] = React.useMemo(() => {
     const inviteEmails = new Set<string>();
     invites.forEach((iv) => { if (iv.email) inviteEmails.add(iv.email.toLowerCase()); });
@@ -810,10 +833,54 @@ export default function MembersPage() {
 
                       <div className="col-md-6 mb-3">
                         <label className="fw-bold">Project</label>
-                        <select className="form-control" value={inviteProjectId ?? ""} onChange={(e) => setInviteProjectId(Number(e.target.value))}>
-                          {loadingProjects ? <option>Loading...</option> : projects.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}
+                        <select
+                          className="form-control"
+                          value={inviteProjectId === null ? "" : String(inviteProjectId)}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "new") {
+                              setInviteProjectId("new");
+                            } else if (v === "") {
+                              setInviteProjectId(null);
+                            } else {
+                              setInviteProjectId(Number(v));
+                            }
+                          }}
+                        >
+                          {/* explicit Create new option first */}
+                          <option value="new">+ Create new project…</option>
+
+                          {loadingProjects ? (
+                            <option value="">Loading...</option>
+                          ) : projects.length === 0 ? (
+                            // If no projects exist we already defaulted to "new"; still show a disabled placeholder
+                            <option value="" disabled>
+                              No existing projects
+                            </option>
+                          ) : (
+                            projects.map((p) => (
+                              <option value={p.id} key={p.id}>
+                                {p.name}
+                              </option>
+                            ))
+                          )}
                         </select>
                       </div>
+
+                      {/* If user selected "Create new project", show an input for the new project's name */}
+                      {inviteProjectId === "new" && (
+                        <div className="col-md-12 mb-3">
+                          <label className="fw-bold">New Project Name</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="Enter new project name"
+                            value={newProjectName}
+                            onChange={(e) => setNewProjectName(e.target.value)}
+                          />
+                          <small className="text-muted">A new project will be created and the invite attached to it.</small>
+                        </div>
+                      )}
                     </div>
 
                     {inviteMessage && <div className="alert alert-info">{inviteMessage}</div>}
@@ -821,7 +888,14 @@ export default function MembersPage() {
                     <div className="d-flex justify-content-end mt-3">
                       <button className="btn g-btn-secondary me-2" onClick={() => setShowModal(false)}>Cancel</button>
                       <button className="btn g-btn" style={{ backgroundColor: "#A463F2" }} onClick={handleInvite} disabled={isInviting}>
-                        {isInviting ? "Sending..." : "Invite"}
+                        {isInviting ? (
+                          <>
+                            <Spinner animation="border" size="sm" role="status" aria-hidden />
+                            <span className="ms-2">Sending...</span>
+                          </>
+                        ) : (
+                          "Invite"
+                        )}
                       </button>
                     </div>
                   </div>

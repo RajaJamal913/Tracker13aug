@@ -21,29 +21,31 @@ class Member(models.Model):
         return f"Member #{self.pk}"
     
 class Project(models.Model):
-    name = models.CharField(max_length=255, db_index=True)  # Indexed for faster lookup
+    name = models.CharField(max_length=255, db_index=True)
     billable = models.BooleanField(default=False)
-    start_date = models.DateField()
-    end_date = models.DateField()
-    time_estimate = models.IntegerField(blank=True, null=True)  # Changed to IntegerField for better calculations
-    budget_estimate = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Default value set
+
+    # make optional so invites / quick-creates don't fail
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+
+    time_estimate = models.IntegerField(blank=True, null=True)
+    budget_estimate = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by   = models.ForeignKey(
+    created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="owned_projects"
     )
-        # <-- change here
     members = models.ManyToManyField(Member, related_name="projects", blank=True)
 
-
     def clean(self):
-        if self.end_date < self.start_date:
+        # if both dates exist, validate order; otherwise skip
+        if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValidationError("End date cannot be earlier than start date.")
 
-    def _str_(self):
-        return self.name 
+    def __str__(self):
+        return self.name
 
 class Property(models.Model):
     project = models.ForeignKey(Project, related_name="properties", on_delete=models.CASCADE)
@@ -107,3 +109,18 @@ class Invitation(models.Model):
                 send_mail(subject, message, from_email, [inviter.email], fail_silently=True)
         except Exception:
             logger.exception("Failed to send invitation-accepted email for invite id=%s", self.pk)
+
+class Team(models.Model):
+    name = models.CharField(max_length=255, db_index=True)
+    members = models.ManyToManyField("Member", related_name="teams", blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="created_teams",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.name

@@ -124,3 +124,24 @@ class ProjectSerializer(serializers.ModelSerializer):
         return ret
     
     
+# serializers.py
+from rest_framework import serializers
+from .models import Invitation
+
+
+class InvitationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invitation
+        fields = (
+            "id",
+            "email",
+            "project",
+            "role",
+            "created_by",
+            "created_at",
+         
+            "accepted_at",
+            "expires_at",
+            "token",
+        )
+        read_only_fields = ("created_by", "created_at", "token", "expires_at")

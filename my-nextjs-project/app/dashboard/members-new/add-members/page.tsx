@@ -1,658 +1,891 @@
 "use client";
-export const dynamic = 'force-dynamic';
-import { useState } from "react";
-import { Table, Form } from "react-bootstrap";
-import { FaCheckCircle, FaTimesCircle, FaPaperPlane } from 'react-icons/fa';
+export const dynamic = "force-dynamic";
 
+import React, { useEffect, useState } from "react";
+import { Table, Button, InputGroup, FormControl } from "react-bootstrap";
+import { FaCheckCircle, FaTimesCircle } from "react-icons/fa";
+import "primereact/resources/themes/lara-light-blue/theme.css";
+import "primereact/resources/primereact.min.css";
+import "primeicons/primeicons.css";
 
-import 'primereact/resources/themes/lara-light-blue/theme.css'; // or another theme
-import 'primereact/resources/primereact.min.css';
-import 'primeicons/primeicons.css';
+/**
+ * Full Members + Invites page with auto-accept invite token handling.
+ *
+ * How invite token is detected:
+ *  - URL params: token, invite, invite_token
+ *  - If user is authenticated (localStorage 'token'), an accept POST is sent immediately.
+ *  - If not authenticated, token saved to localStorage 'pending_invite_token' and a banner is shown.
+ *  - When localStorage 'token' is set (login), the script automatically tries to accept pending invite.
+ *
+ * Make sure your backend accepts POST /api/invites/accept/ with body { token: "<token>" }
+ * and requires authentication (Authorization: Token <...>) to attach user to project.
+ */
 
-import { MultiSelect } from 'primereact/multiselect';
-import { BiUpload } from "react-icons/bi";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api").replace(/\/$/, "");
 
+type Project = { id: number; name: string };
 
+type Member = {
+  id?: number;
+  full_name?: string;
+  name?: string;
+  email?: string;
+  team?: string | null;
+  project?: string | null;
+  archived?: boolean;
+};
 
-import { Button, InputGroup, FormControl } from 'react-bootstrap';
+type InviteAPI = {
+  id?: number;
+  email?: string;
+  is_accepted?: boolean;
+  accepted_at?: string | null;
+  logged_in?: boolean;
+  tracked_time?: boolean;
+  tracked_seconds?: number;
+  created_at?: string;
+  role?: string;
+  project?: number | null;
+  project_name?: string | null;
+};
 
-export default function members() {
-
-  // Use States 
-
+export default function MembersPage() {
+  // Tabs / modal state
   const [activeTab, setActiveTab] = useState("members");
   const [activeTab2, setActiveTab2] = useState("email");
   const [showModal, setShowModal] = useState(false);
 
-  const [memberLimit, setMemberLimit] = useState("");
-  const [hourlyRate, setHourlyRate] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  // Invite form states
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("Member");
+  const [inviteProjectId, setInviteProjectId] = useState<number | null>(null);
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
-  // for members table 
-  const membersActivityData = [
-    { member: "Sajjal Fatima", email: "sajjal@gmail.com", team: "Development", project: "Ecommerce" },
-    { member: "Hamza", email: "Hamza.com", team: "Designing", project: "Ecommerce" },
-    { member: "Usman", email: "Usman@gmail.com", team: "QA", project: "Ecommerce" },
-  ];
+  // Data states
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [archivedMembers, setArchivedMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<InviteAPI[]>([]);
 
-  const [search, setSearch] = useState("");
+  // loading flags
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  const [loadingInvites, setLoadingInvites] = useState(false);
 
-  // const filteredActivities = membersActivityData.filter((activity) =>
-  //   activity.assignedTo.toLowerCase().includes(search.toLowerCase())
-  // );
-  // for members table 
+  // UI toggle: show only invited or all members (kept for compatibility but we force invited view)
+  const [showOnlyInvited, setShowOnlyInvited] = useState(true);
 
-  // for MultiSelect selectbox 
-  const [selectedCities, setSelectedCities] = useState([]);
+  // Pending invite token (from URL or localStorage)
+  const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
+  // Notification/banner if pending token exists and user not authenticated
+  const [pendingInviteBanner, setPendingInviteBanner] = useState<string | null>(null);
 
-  const cities = [
-    { name: 'Development Team', code: 'DT' },
-    { name: 'Product Management', code: 'PM' },
-    { name: 'Quality Assurance (QA)', code: 'QA' }
+  // Simple email validator
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-  ];
-
-
-  const [selectedProject, setSelectedProject] = useState([]);
-
-  const projects = [
-    { name: 'Getting Started with WewWizTracker', code: 'DT' }
-
-
-  ];
-  // for MultiSelect selectbox 
-
-
-  // for file Upload
-  // const [file, setFile] = useState(null);
-
-  //   const handleFileChange = (e) => {
-  //     setFile(e.target.files[0]);
-  //   };
-
-  // build change
-  const [file, setFile] = useState<File | null>(null);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
+  // read token helper - uses exact key "token"
+  const readToken = () => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("token") || null;
   };
 
-  // for file Upload 
+  // -----------------------
+  // Normalize helpers
+  // -----------------------
+  const normalizeMember = (raw: any): Member => {
+    const member: Member = {};
+    if (!raw) return member;
+    member.id = raw.id ?? raw.pk ?? undefined;
+    member.full_name = raw.full_name ?? (raw.user && raw.user.full_name) ?? raw.name ?? raw.username ?? undefined;
+    member.name = raw.name ?? member.full_name;
+    member.email = raw.email ?? (raw.user && raw.user.email) ?? raw.contact_email ?? undefined;
+    member.team = raw.team ?? raw.team_name ?? (raw.team && raw.team.name) ?? undefined;
+    if (raw.project && typeof raw.project === "object") {
+      member.project = raw.project.name ?? String(raw.project.id ?? "");
+    } else {
+      member.project = raw.project_name ?? raw.project ?? raw.project_display ?? undefined;
+    }
+    member.archived = !!raw.archived;
+    return member;
+  };
 
-  // for copy links in invide modal 
-  const [copied, setCopied] = useState(false);
-  const inviteLink = "https://www.webwork-tracker.com/app/join-invite/abc123";
+  const normalizeInvite = (raw: any): InviteAPI => {
+    const invite: InviteAPI = {};
+    if (!raw) return invite;
+    invite.id = raw.id ?? raw.pk ?? undefined;
+    invite.email = raw.email ?? raw.invitee_email ?? undefined;
+    invite.is_accepted = raw.is_accepted ?? raw.accepted ?? undefined;
+    invite.accepted_at = raw.accepted_at ?? raw.accepted_on ?? null;
+    invite.logged_in = raw.logged_in ?? raw.has_logged_in ?? undefined;
+    invite.tracked_time = raw.tracked_time ?? undefined;
+    invite.tracked_seconds = raw.tracked_seconds ?? undefined;
+    invite.created_at = raw.created_at ?? raw.created_on ?? undefined;
+    invite.role = raw.role ?? undefined;
+    invite.project = raw.project ?? raw.project_id ?? undefined;
+    invite.project_name = raw.project_name ?? (raw.project && raw.project.name) ?? undefined;
+    return invite;
+  };
 
-  const handleCopy = async () => {
+  const getProjectNameFrom = (proj: any, projName?: string | null) => {
+    // Prefer explicit project_name from the invite/server
+    if (projName) return projName;
+    if (proj == null || proj === "") return "-";
+    // If project is a number or numeric string, try to lookup from `projects`
+    const num = typeof proj === "number" ? proj : Number(proj);
+    if (!Number.isNaN(num)) {
+      const found = projects.find((p) => p.id === num);
+      return found ? found.name : String(proj);
+    }
+    // If it's an object, try to read .name
+    if (typeof proj === "object") return proj.name ?? String(proj.id ?? "-");
+    // Fallback to the raw value
+    return String(proj);
+  };
+
+  // -----------------------
+  // Fetch projects / members / invites / archived
+  // -----------------------
+  useEffect(() => {
+    const token = readToken();
+    if (!token) {
+      setProjects([{ id: 1, name: "Getting Started with WewWizTracker" }]);
+      setInviteProjectId((prev) => prev ?? 1);
+    } else {
+      // nothing: fetchProjects below will run
+    }
+    fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchProjects = async () => {
+    setLoadingProjects(true);
     try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      const token = readToken();
+      const res = await fetch(`${API_BASE}/projects/`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Token ${token}` } : {}),
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data.map((p) => ({ id: p.id, name: p.name || p.title || String(p.id) })) : [];
+      setProjects(list.length ? list : [{ id: 1, name: "Getting Started with WewWizTracker" }]);
+      if (!inviteProjectId && list.length > 0) setInviteProjectId(list[0].id);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      console.error("Error fetching projects:", err);
+      setProjects((prev) => (prev.length ? prev : [{ id: 1, name: "Getting Started with WewWizTracker" }]));
+      if (!inviteProjectId) setInviteProjectId(1);
+    } finally {
+      setLoadingProjects(false);
     }
   };
-  // for copy links in invide modal 
 
+  const makeHeadersWithToken = (): HeadersInit => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const token = readToken();
+    if (token) headers["Authorization"] = `Token ${token}`;
+    return headers;
+  };
 
-  // for on bording tab 
-  const data = [
-    {
-      initials: 'HR',
-      email: 'Hamzaraheed@gmail.com',
-      accepted: true,
-      loggedIn: false,
-      trackedTime: false,
-    },
-    {
-      initials: 'MA',
-      email: 'Mirzaamnad@gmail.com',
-      accepted: false,
-      loggedIn: false,
-      trackedTime: false,
-    },
-  ];
-  // for on bording tab 
+  const fetchMembers = async () => {
+    setLoadingMembers(true);
+    try {
+      const res = await fetch(`${API_BASE}/members/`, {
+        method: "GET",
+        headers: makeHeadersWithToken(),
+      });
+      if (!res.ok) {
+        console.warn("GET /members/ failed", res.status);
+        setMembers([]);
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data.map(normalizeMember) : [];
+      setMembers(list);
+    } catch (err) {
+      console.error("fetchMembers error:", err);
+      setMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
 
+  const fetchInvites = async () => {
+    setLoadingInvites(true);
+    try {
+      const res = await fetch(`${API_BASE}/invites/`, {
+        method: "GET",
+        headers: makeHeadersWithToken(),
+      });
 
+      if (res.status === 405) {
+        console.info("GET /invites/ not supported (405) — leaving existing invites as-is.");
+        return;
+      }
 
+      if (!res.ok) {
+        console.warn("GET /invites/ failed", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      const list = Array.isArray(data) ? data.map(normalizeInvite) : [];
+      setInvites(list);
+    } catch (err) {
+      console.error("fetchInvites error:", err);
+      // keep current invites (optimistic) on network error
+    } finally {
+      setLoadingInvites(false);
+    }
+  };
+
+  const fetchArchivedMembers = async () => {
+    setLoadingArchived(true);
+    try {
+      const res = await fetch(`${API_BASE}/members/?archived=true`, {
+        method: "GET",
+        headers: makeHeadersWithToken(),
+      });
+      if (!res.ok) {
+        console.warn("GET /members/?archived=true failed", res.status);
+        setArchivedMembers([]);
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data.map(normalizeMember) : [];
+      setArchivedMembers(list);
+    } catch (err) {
+      console.error("fetchArchivedMembers error:", err);
+      setArchivedMembers([]);
+    } finally {
+      setLoadingArchived(false);
+    }
+  };
+
+  // initial fetch of lists
+  useEffect(() => {
+    fetchMembers();
+    fetchInvites();
+    fetchArchivedMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -----------------------
+  // Invite POST + optimistic handling
+  // -----------------------
+  const postInvite = async (email: string, projectId: number, role: string) => {
+    const token = readToken();
+    if (!token) throw new Error("No token found. User might not be authenticated.");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Token ${token}`,
+    };
+    const res = await fetch(`${API_BASE}/invites/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, project: projectId, role }),
+    });
+    return res;
+  };
+
+  const handleInvite = async () => {
+    setInviteMessage(null);
+
+    if (!inviteEmail || !isValidEmail(inviteEmail)) {
+      setInviteMessage("Please enter a valid email address.");
+      return;
+    }
+    if (!inviteProjectId) {
+      setInviteMessage("Please select a project.");
+      return;
+    }
+
+    const token = readToken();
+    if (!token) {
+      setInviteMessage("Not authenticated. Please log in and ensure a token is stored under localStorage key 'token'.");
+      return;
+    }
+
+    setIsInviting(true);
+
+    const optimisticInvite: InviteAPI = {
+      id: Date.now() * -1,
+      email: inviteEmail,
+      is_accepted: false,
+      accepted_at: null,
+      logged_in: false,
+      tracked_time: false,
+      tracked_seconds: 0,
+      created_at: new Date().toISOString(),
+      role: inviteRole,
+      project: inviteProjectId,
+      project_name: projects.find((p) => p.id === inviteProjectId)?.name ?? undefined,
+    };
+
+    try {
+      setInvites((prev) => {
+        const without = prev.filter((iv) => (iv.email ?? "").toLowerCase() !== inviteEmail.toLowerCase());
+        return [optimisticInvite, ...without];
+      });
+
+      setMembers((prev) => {
+        const already = prev.some((m) => (m.email ?? "").toLowerCase() === inviteEmail.toLowerCase());
+        if (already) return prev;
+        const invitedMember: Member = {
+          id: optimisticInvite.id as number,
+          full_name: `Invited: ${inviteEmail}`,
+          name: `Invited: ${inviteEmail}`,
+          email: inviteEmail,
+          team: "-",
+          project: optimisticInvite.project_name ?? "-",
+          archived: false,
+        };
+        return [invitedMember, ...prev];
+      });
+
+      const res = await postInvite(inviteEmail, inviteProjectId, inviteRole);
+
+      if (res.ok) {
+        let body: any = null;
+        try {
+          const ct = res.headers.get?.("content-type") ?? "";
+          if (ct.includes("application/json")) body = await res.json();
+          else body = null;
+        } catch {
+          body = null;
+        }
+
+        const serverInvite = body ? normalizeInvite(body) : optimisticInvite;
+
+        setInvites((prev) => {
+          const filtered = prev.filter((iv) => (iv.email ?? "").toLowerCase() !== (serverInvite.email ?? "").toLowerCase());
+          return [serverInvite, ...filtered];
+        });
+
+        setMembers((prev) => {
+          return prev.map((m) =>
+            (m.email ?? "").toLowerCase() === (serverInvite.email ?? "").toLowerCase()
+              ? { ...(m as Member), id: serverInvite.id ?? m.id, project: serverInvite.project_name ?? m.project }
+              : m
+          );
+        });
+
+        setInviteMessage("Invite sent successfully.");
+        setInviteEmail("");
+        // refresh members for canonical state (skip fetchInvites to avoid 405 issues unless backend supports it)
+        await fetchMembers();
+      } else {
+        setInvites((prev) => prev.filter((iv) => (iv.email ?? "").toLowerCase() !== inviteEmail.toLowerCase()));
+        setMembers((prev) => prev.filter((m) => (m.email ?? "").toLowerCase() !== inviteEmail.toLowerCase()));
+
+        let detail = `Invite failed (status ${res.status}).`;
+        try {
+          const ct = res.headers.get?.("content-type") ?? "";
+          if (ct.includes("application/json")) {
+            const j = await res.json();
+            detail = j?.detail || j?.message || JSON.stringify(j) || detail;
+          } else {
+            detail = (await res.text()) || detail;
+          }
+        } catch {}
+        setInviteMessage(detail);
+      }
+    } catch (err: any) {
+      console.error("Invite threw", err);
+      setInvites((prev) => prev.filter((iv) => (iv.email ?? "").toLowerCase() !== inviteEmail.toLowerCase()));
+      setMembers((prev) => prev.filter((m) => (m.email ?? "").toLowerCase() !== inviteEmail.toLowerCase()));
+      setInviteMessage(err?.message || "Network error while sending invite.");
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  // -----------------------
+  // Accept invite token handling
+  // -----------------------
+  const acceptInviteToken = async (tokenToAccept: string) => {
+    if (!tokenToAccept) return { ok: false, message: "no token" };
+    const auth = readToken();
+    if (!auth) return { ok: false, message: "not authenticated" };
+
+    try {
+      const res = await fetch(`${API_BASE}/invites/accept/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Token ${auth}`,
+        },
+        body: JSON.stringify({ token: tokenToAccept }),
+      });
+
+      if (res.ok) {
+        // refresh local state
+        await Promise.all([fetchMembers(), fetchInvites()]);
+        // remove pending token
+        localStorage.removeItem("pending_invite_token");
+        setPendingInviteToken(null);
+        setPendingInviteBanner(null);
+        return { ok: true };
+      } else {
+        const body = await res.json().catch(() => null);
+        const message = body?.detail || body?.message || `Accept failed (${res.status})`;
+        return { ok: false, message };
+      }
+    } catch (err: any) {
+      console.error("acceptInviteToken error:", err);
+      return { ok: false, message: err?.message || "network error" };
+    }
+  };
+
+  // read invite token from URL (token, invite, invite_token)
+  const readInviteTokenFromUrl = (): string | null => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const candidates = ["token", "invite", "invite_token"];
+    for (const k of candidates) {
+      const v = params.get(k);
+      if (v) return v;
+    }
+    return null;
+  };
+
+  // On mount: detect URL token; if authenticated accept immediately; else save pending token
+  useEffect(() => {
+    const t = readInviteTokenFromUrl();
+    if (t) {
+      const auth = readToken();
+      if (auth) {
+        // user is authenticated — accept immediately (best-effort)
+        (async () => {
+          const { ok, message } = await acceptInviteToken(t);
+          if (!ok) setInviteMessage(`Failed to accept invite token: ${message}`);
+        })();
+      } else {
+        // store pending token so after login we accept
+        localStorage.setItem("pending_invite_token", t);
+        setPendingInviteToken(t);
+        setPendingInviteBanner("You have an invite — sign in or complete registration to accept it automatically.");
+      }
+    } else {
+      // also check if pending token is in localStorage (maybe from previous navigation)
+      const pending = localStorage.getItem("pending_invite_token");
+      if (pending) {
+        setPendingInviteToken(pending);
+        const auth = readToken();
+        if (auth) {
+          (async () => {
+            const { ok, message } = await acceptInviteToken(pending);
+            if (!ok) setInviteMessage(`Failed to accept pending invite: ${message}`);
+          })();
+        } else {
+          setPendingInviteBanner("You have a pending invite — please sign in to accept it.");
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for storage changes (e.g., login sets localStorage.token) to accept pending invite
+  useEffect(() => {
+    const handler = (ev: StorageEvent) => {
+      if (ev.key === "token" && ev.newValue) {
+        // user logged in in another tab or same tab; try to accept pending invite
+        const pending = localStorage.getItem("pending_invite_token");
+        if (pending) {
+          (async () => {
+            const { ok, message } = await acceptInviteToken(pending);
+            if (!ok) {
+              setInviteMessage(`Failed to accept pending invite after login: ${message}`);
+            } else {
+              setInviteMessage("Invite accepted after login.");
+            }
+          })();
+        }
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Also poll quickly after mount to detect if login happened in same tab (some apps set token without triggering storage event)
+  useEffect(() => {
+    const pending = localStorage.getItem("pending_invite_token");
+    if (!pending) return;
+    const check = async () => {
+      const auth = readToken();
+      if (auth) {
+        const { ok, message } = await acceptInviteToken(pending);
+        if (!ok) setInviteMessage(`Failed to accept pending invite: ${message}`);
+      }
+    };
+    const id = setTimeout(check, 500); // small delay to allow login flow to finish
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // invite helpers to interpret invite flags
+  const inviteAccepted = (i: InviteAPI) => !!(i.is_accepted || i.accepted_at);
+  const inviteLoggedIn = (i: InviteAPI) => !!(i.logged_in);
+  const inviteTrackedTime = (i: InviteAPI) => !!(i.tracked_time || (i.tracked_seconds && i.tracked_seconds > 0));
+
+  const workspaceInviteLink = typeof window !== "undefined" ? `${window.location.origin}/app/join-invite/abc123` : "";
+
+  // fallback sample members to preserve the UI while loading
+  const sampleMembers: Member[] = Array.from({ length: 14 }, (_, i) => ({
+    id: i + 1,
+    name: `Member ${i + 1}`,
+    email: "-",
+    team: "-",
+    project: "-",
+  }));
+
+  // invitedMembersDisplay (merge invites + members by email) — ensure we show project names (look up by id when needed)
+  const invitedMembersDisplay: Member[] = React.useMemo(() => {
+    const inviteEmails = new Set<string>();
+    invites.forEach((iv) => { if (iv.email) inviteEmails.add(iv.email.toLowerCase()); });
+
+    const matchedMembers: Member[] = members
+      .map((m) => ({ ...m, project: getProjectNameFrom(m.project) }))
+      .filter((m) => { const em = (m.email ?? "").toLowerCase(); return em && inviteEmails.has(em); });
+
+    const matchedMemberEmails = new Set(matchedMembers.map((m) => (m.email ?? "").toLowerCase()));
+
+    const inviteOnlyRows: Member[] = invites
+      .filter((iv) => (iv.email ?? "").trim() !== "")
+      .filter((iv) => !matchedMemberEmails.has((iv.email ?? "").toLowerCase()))
+      .map((iv) => ({
+        id: iv.id ?? undefined,
+        full_name: `Invited: ${iv.email}`,
+        name: `Invited: ${iv.email}`,
+        email: iv.email,
+        team: "-",
+        project: getProjectNameFrom(iv.project, iv.project_name),
+        archived: false,
+      } as Member));
+
+    return [...matchedMembers, ...inviteOnlyRows];
+  }, [members, invites, projects]);
 
   return (
     <div className="container-fluid">
+      {/* Banner if pending invite exists and user not authenticated */}
+      {pendingInviteBanner && (
+        <div className="alert alert-info mt-2">
+          {pendingInviteBanner}{" "}
+          <strong>
+            After you sign in, the invite will be accepted automatically.
+          </strong>
+        </div>
+      )}
+
+      {/* heading + Invite button */}
       <div className="row mb-3">
         <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
           <h2 className="page-heading-wrapper">Members</h2>
           <div className="d-flex justify-content-between align-items-center gap-2">
-            <button
-              className="btn g-btn"
-              style={{ backgroundColor: "#A463F2" }}
-              onClick={() => setShowModal(true)}
-            >
+            <button className="btn g-btn" style={{ backgroundColor: "#A463F2" }} onClick={() => setShowModal(true)}>
               + Invite
             </button>
           </div>
         </div>
       </div>
 
+      {/* tabs */}
       <div className="row mt-3">
-
         <div className="tabContainer profile-settings-tabs-wrapper mb-4 multi-style">
-          <div className="um-btns-wrap d-flex">
-            {/* Members Tab */}
+          <div className="um-btns-wrap d-flex align-items-center">
             <button
-              className={`btn border-0 fw-bold tabButton ${activeTab === "members" ? "text-primary position-relative active" : ""
-                }`}
+              className={`btn border-0 fw-bold tabButton ${activeTab === "members" ? "text-primary position-relative active" : ""}`}
               onClick={() => setActiveTab("members")}
             >
               Members
             </button>
 
-            {/* Onboarding Status Tab */}
             <button
-              className={`btn border-0 fw-bold tabButton mx-3 ${activeTab === "onboarding" ? "text-primary position-relative active" : ""
-                }`}
+              className={`btn border-0 fw-bold tabButton mx-3 ${activeTab === "onboarding" ? "text-primary position-relative active" : ""}`}
               onClick={() => setActiveTab("onboarding")}
             >
               Onboarding Status
-
             </button>
 
-            {/* Archived Tab */}
             <button
-              className={`btn border-0 fw-bold tabButton ${activeTab === "archived" ? "text-primary position-relative active" : ""
-                }`}
+              className={`btn border-0 fw-bold tabButton ${activeTab === "archived" ? "text-primary position-relative active" : ""}`}
               onClick={() => setActiveTab("archived")}
             >
               Archived
-
             </button>
+
+            {/* Toggle between invited-only and all members - hidden because we force invited-only view */}
+            <div style={{ marginLeft: "1rem", display: "none" }}>
+              <small className="text-muted me-2">View:</small>
+              <Button
+                size="sm"
+                variant={showOnlyInvited ? "primary" : "outline-primary"}
+                onClick={() => setShowOnlyInvited(true)}
+                className="me-1"
+              >
+                Invited only
+              </Button>
+              <Button
+                size="sm"
+                variant={!showOnlyInvited ? "primary" : "outline-primary"}
+                onClick={() => setShowOnlyInvited(false)}
+              >
+                All members
+              </Button>
+            </div>
           </div>
-
-
         </div>
 
         <div className="col-lg-12 px-0">
-          {activeTab === "members" && <div className="">
-            {/* Table */}
-            <div className="table-responsive g-table-wrap g-t-scroll">
-              <Table hover className="text-center g-table">
-                <thead>
-                  <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
-                    <th>Members</th>
-                    <th>Email</th>
-                    <th>Team</th>
-                    <th>project</th>
-
-                  </tr>
-                </thead>
-                <tbody>
-                  {membersActivityData.map((data, index) => (
-                    <tr key={index} className="text-center">
-
-                      <td className="border border-gray-300 px-4 py-2">{data.member}</td>
-                      <td className="border border-gray-300 px-4 py-2">{data.email}</td>
-                      <td className="border border-gray-300 px-4 py-2">{data.team}</td>
-                      <td className="border border-gray-300 px-4 py-2">{data.project}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-          </div>}
-          {activeTab === "onboarding" && <div className="">
-            <div className="container-fluid mt-4">
-              <div className="mb-4 card_wrapper_bg_grad p-4">
-                <div className="row g-4">
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad ">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="41" viewBox="0 0 31 41" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M6.54909 27.7215L7.56221 26.7084H14.9744L10.2449 18.163L6.74743 18.8744C5.83022 19.0606 5.09831 19.7516 4.859 20.6567L0.70688 34.2072C0.511332 34.9446 0.670564 35.7315 1.13615 36.3349C1.60174 36.9402 2.32154 37.294 3.08511 37.294H6.55002L6.54909 27.7215Z" fill="white" />
-                          <path d="M30.5439 34.2072L26.3918 20.6567C26.1488 19.7404 25.4029 19.0448 24.4717 18.8679L20.9872 18.2086L16.2773 26.7075H24.2482L25.2613 27.7206V37.2922H28.1675C28.9302 37.2922 29.6509 36.9383 30.1165 36.3331C30.5812 35.7278 30.7376 34.9447 30.5439 34.2072Z" fill="white" />
-                          <path d="M8.57809 37.294H8.29688V37.2977L22.9555 37.2968V37.294H23.2358V28.7365H8.57809V37.294Z" fill="white" />
-                          <path d="M26.7201 38.214H4.52734V40.0465H26.7201V38.214Z" fill="white" />
-                          <path d="M7.72252 12.1838C7.76163 12.2639 7.81284 12.3868 7.86685 12.5153C8.08195 13.0331 8.25701 13.4195 8.50005 13.6467C9.62584 17.3202 12.5311 19.8633 15.618 19.8539C18.6918 19.8437 21.5617 17.2783 22.6456 13.5946C22.884 13.3655 23.0534 12.9809 23.2629 12.4669C23.316 12.3356 23.3644 12.2118 23.4026 12.1317C23.8189 11.2713 23.6755 10.3392 23.0935 9.88569C23.0935 9.85776 23.0935 9.82889 23.0935 9.80096C23.0795 5.24098 22.4845 0.377439 15.5509 0.400718C8.56616 0.423066 7.99815 5.08175 8.01304 9.85031C8.01304 9.87917 8.01398 9.90711 8.01398 9.93505C7.43665 10.395 7.30069 11.3281 7.72252 12.1838ZM8.69746 10.7154L8.71795 10.707C8.83248 10.6651 8.92374 10.5841 8.9824 10.4835L10.192 10.6707C10.3084 10.6874 10.4211 10.625 10.4676 10.518L11.2321 8.75245C12.0972 8.9601 15.3731 9.70039 17.9403 9.69108C18.7356 9.68921 19.3958 9.61193 19.907 9.46201L20.3921 10.6325C20.4322 10.7312 20.5281 10.7927 20.6296 10.7917C20.651 10.7917 20.6761 10.788 20.6985 10.7824L22.1073 10.3867C22.1632 10.5105 22.2666 10.612 22.3988 10.6614L22.4184 10.6679C22.6279 10.7722 22.6968 11.2294 22.4761 11.6838C22.423 11.7937 22.3681 11.9324 22.3066 12.0795C22.221 12.2928 22.045 12.7267 21.9379 12.8431C21.8215 12.9102 21.733 13.021 21.6976 13.1523C20.7767 16.484 18.2709 18.8166 15.6087 18.8259C12.9325 18.8343 10.3922 16.5185 9.43216 13.1942C9.39398 13.0629 9.30738 12.9539 9.18912 12.8878C9.0811 12.7714 8.89859 12.3347 8.81013 12.1205C8.75054 11.9762 8.6928 11.8384 8.6388 11.7304C8.42183 11.2778 8.48701 10.8206 8.69746 10.7154Z" fill="white" />
-                        </svg>
-                      </div>
-                      <div className="card-data-wrap">
-                        <h5 className="mb-0 fw-bold">15</h5>
-                        <small>Total Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="35" viewBox="0 0 31 35" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12.4481 2.27808C14.1496 2.27808 15.5244 3.65285 15.5244 5.3543C15.5244 7.05576 14.1496 8.43053 12.4481 8.43053C10.7467 8.43053 9.37192 7.05576 9.37192 5.3543C9.37192 3.65285 10.7467 2.27808 12.4481 2.27808ZM28.7821 16.0258L25.2567 6.78352H25.2431L27.0806 0.481346L25.665 0.072998L22.0307 12.5276L23.4463 12.936L24.5625 9.08389L26.8901 15.0866H23.4463V16.0258H19.9209C19.9209 16.0122 19.9209 15.9986 19.9209 15.985C19.9209 15.073 19.2539 14.2835 18.342 14.2835H12.6795C12.6795 14.2835 11.087 9.87336 10.5153 8.92055C10.0661 8.18552 9.37192 7.72273 8.45994 7.72273C7.05794 7.72273 5.99624 8.87971 5.23399 10.5539C3.96811 13.3307 3.42364 16.7472 3.73671 19.8915C3.88644 21.171 4.1995 22.2463 4.94814 22.8588H2.42999V12.9496H0.292969V34.3743H2.42999V24.9959H12.5843L11.1686 32.0195C10.9509 33.0812 11.6451 34.1156 12.7068 34.3334C12.8429 34.3607 12.9654 34.3743 13.1015 34.3743C14.0135 34.3743 14.8302 33.7345 15.0207 32.7953L16.2186 26.847L17.7431 30.9441C18.0425 31.7336 18.7912 32.2236 19.5806 32.2236C19.812 32.2236 20.0434 32.1828 20.2612 32.1011C21.2821 31.72 21.7857 30.5902 21.4182 29.583L18.097 20.6674C17.8111 19.9051 17.0761 19.3879 16.2594 19.3879H11.0053V18.1492H28.1559V34.3743H30.293V16.0258H28.7821Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">6</h5>
-                        <small>Completed Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="31" viewBox="0 0 31 31" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M2.87756 0.549496C2.43822 0.110141 1.7259 0.110126 1.28656 0.549466C0.847202 0.988806 0.847187 1.70113 1.28653 2.14047L10.0688 10.9229C9.12209 11.3194 8.45704 12.2546 8.45704 13.3451V15.2201H10.7071V13.3451L10.717 13.2592C10.7558 13.0936 10.9045 12.9701 11.0821 12.9701H12.116L15.8616 16.7158H3.58062C2.51732 16.7158 2.04749 18.0547 2.87759 18.7192L9.95706 24.3858V26.8522C9.95706 28.7162 11.4681 30.2272 13.332 30.2272H18.5752C20.4392 30.2272 21.9502 28.7162 21.9502 26.8522V24.3857L22.8283 23.6826L29.0364 29.8911C29.4758 30.3304 30.1882 30.3304 30.6275 29.8911C31.0669 29.4517 31.0669 28.7393 30.6275 28.3L2.87756 0.549496ZM21.2275 22.082L20.122 22.9671C19.8554 23.1806 19.7002 23.5037 19.7002 23.8452V26.8522C19.7002 27.4735 19.1965 27.9772 18.5752 27.9772H13.332C12.7108 27.9772 12.2071 27.4735 12.2071 26.8522V23.8452C12.2071 23.5037 12.0518 23.1804 11.7851 22.967L6.78643 18.9658H18.1115L21.2275 22.082Z" fill="white" />
-                          <path d="M15.957 9.2208C15.4412 9.2208 14.9455 9.134 14.4841 8.97419L11.7036 6.19368C11.5438 5.73217 11.457 5.23659 11.457 4.72075C11.457 2.23544 13.4718 0.220703 15.957 0.220703C18.4424 0.220703 20.4571 2.23544 20.4571 4.72075C20.4571 7.20606 18.4424 9.2208 15.957 9.2208ZM15.957 2.47073C14.7144 2.47073 13.707 3.4781 13.707 4.72075C13.707 5.9634 14.7144 6.97078 15.957 6.97078C17.1998 6.97078 18.207 5.9634 18.207 4.72075C18.207 3.4781 17.1998 2.47073 15.957 2.47073Z" fill="white" />
-                          <path d="M28.3249 16.7158H22.2266L26.3633 20.8527L29.0281 18.7191C29.858 18.0544 29.3881 16.7158 28.3249 16.7158Z" fill="white" />
-                          <path d="M18.4803 12.9701L16.2305 10.7201H20.8247C22.2019 10.7201 23.3314 11.7808 23.441 13.1298L23.4497 13.3451V15.2201H21.1997V13.3451C21.1997 13.1676 21.0763 13.0188 20.9107 12.98L20.8247 12.9701H18.4803Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">0</h5>
-                        <small>Over Due Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="31" viewBox="0 0 31 31" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M22.375 13.7236C26.9314 13.7236 30.625 17.4172 30.625 21.9736C30.625 26.53 26.9314 30.2236 22.375 30.2236C17.8186 30.2236 14.125 26.53 14.125 21.9736C14.125 17.4172 17.8186 13.7236 22.375 13.7236ZM22.375 25.5361C21.8572 25.5361 21.4375 25.9558 21.4375 26.4736C21.4375 26.9914 21.8572 27.4111 22.375 27.4111C22.8928 27.4111 23.3125 26.9914 23.3125 26.4736C23.3125 25.9558 22.8928 25.5361 22.375 25.5361ZM22.75 0.223633C25.4424 0.223633 27.625 2.40624 27.625 5.09863V13.7563C26.9302 13.3116 26.1752 12.9523 25.375 12.6939V8.47363H2.875V22.3486C2.875 23.7984 4.05025 24.9736 5.5 24.9736H13.0953C13.3537 25.7739 13.7129 26.5288 14.1577 27.2236H5.5C2.80761 27.2236 0.625 25.041 0.625 22.3486V5.09863C0.625 2.40624 2.80761 0.223633 5.5 0.223633H22.75ZM22.375 16.7236C21.9608 16.7236 21.625 17.0595 21.625 17.4736V23.4736C21.625 23.8878 21.9608 24.2236 22.375 24.2236C22.7892 24.2236 23.125 23.8878 23.125 23.4736V17.4736C23.125 17.0595 22.7892 16.7236 22.375 16.7236ZM22.75 2.47363H5.5C4.05025 2.47363 2.875 3.64888 2.875 5.09863V6.22363H25.375V5.09863C25.375 3.64888 24.1998 2.47363 22.75 2.47363Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">9</h5>
-                        <small>Pending Task</small>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-
-              {/* Table Component */}
+          {/* Members table - now ALWAYS shows invited members only */}
+          {activeTab === "members" && (
+            <div>
               <div className="table-responsive g-table-wrap g-t-scroll">
-                <Table className="text-center text-center g-table table">
-                  <thead >
-                    <tr>
+                <Table hover className="text-center g-table">
+                  <thead>
+                    <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
+                      <th>Members</th>
                       <th>Email</th>
-                      <th>Accepted Invitation</th>
-                      <th>Logged In</th>
-                      <th>Tracked Time</th>
-                      <th>Send Reminder</th>
+                      <th>Team</th>
+                      <th>Project</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.map((user, index) => (
-                      <tr key={index}>
-                        <td>
-                          <span className="badge bg-light text-dark me-2" style={{ padding: '10px' }}>{user.initials}</span>
-                          {user.email}
-                        </td>
-                        <td className="text-center">{user.accepted ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td className="text-center">{user.loggedIn ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td className="text-center">{user.trackedTime ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td>
-                          <FaPaperPlane color="#a34efc" style={{ cursor: 'pointer' }} />
-                        </td>
+                    {loadingMembers ? (
+                      sampleMembers.map((data, idx) => (
+                        <tr key={data.id ?? idx} className="text-center">
+                          <td className="border border-gray-300 px-4 py-2">{data.full_name ?? data.name ?? `Member ${idx + 1}`}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.email ?? "-"}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.team ?? "-"}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.project ?? "-"}</td>
+                        </tr>
+                      ))
+                    ) : invitedMembersDisplay.length === 0 ? (
+                      <tr>
+                        <td colSpan={4}>No invited members found.</td>
+                      </tr>
+                    ) : (
+                      invitedMembersDisplay.map((data, idx) => (
+                        <tr key={data.id ?? idx} className="text-center">
+                          <td className="border border-gray-300 px-4 py-2">{data.full_name ?? data.name ?? `Member ${idx + 1}`}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.email ?? "-"}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.team ?? "-"}</td>
+                          <td className="border border-gray-300 px-4 py-2">{data.project ?? "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Onboarding / invites table */}
+          {activeTab === "onboarding" && (
+            <div>
+              <div className="container-fluid mt-4">
+                <div className="table-responsive g-table-wrap g-t-scroll">
+                  <Table className="text-center g-table table">
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Accepted Invitation</th>
+                        <th>Project</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingInvites && (
+                        <tr>
+                          <td colSpan={4}>Loading invites...</td>
+                        </tr>
+                      )}
+
+                      {!loadingInvites && invites.length === 0 && (
+                        <tr>
+                          <td colSpan={4}>No invites found.</td>
+                        </tr>
+                      )}
+
+                      {invites.map((user, i) => (
+                        <tr key={user.id ?? user.email ?? i}>
+                          <td>{user.email ?? "-"}</td>
+                          <td className="text-center">{inviteAccepted(user) ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
+                          <td>{getProjectNameFrom(user.project, user.project_name)}</td>
+                          <td>{user.created_at ? new Date(user.created_at).toLocaleString() : "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Archived table */}
+          {activeTab === "archived" && (
+            <div>
+              <div className="table-responsive g-table-wrap g-t-scroll">
+                <Table className="text-center g-table">
+                  <thead>
+                    <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
+                      <th>Members</th>
+                      <th>Email</th>
+                      <th>Team</th>
+                      <th>Project</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingArchived && (
+                      <tr>
+                        <td colSpan={4}>Loading archived members...</td>
+                      </tr>
+                    )}
+                    {!loadingArchived && archivedMembers.length === 0 && (
+                      <tr>
+                        <td colSpan={4}>No archived members.</td>
+                      </tr>
+                    )}
+                    {archivedMembers.map((data, idx) => (
+                      <tr key={data.id ?? idx} className="text-center">
+                        <td className="border border-gray-300 px-4 py-2">{data.full_name ?? data.name ?? `Member ${idx + 1}`}</td>
+                        <td className="border border-gray-300 px-4 py-2">{data.email ?? "-"}</td>
+                        <td className="border border-gray-300 px-4 py-2">{data.team ?? "-"}</td>
+                        <td className="border border-gray-300 px-4 py-2">{data.project ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </Table>
               </div>
             </div>
-
-          </div>}
-          {activeTab === "archived" && <div className="">
-            <div className="container-fluid mt-4">
-              <div className="mb-4 card_wrapper_bg_grad p-4">
-                <div className="row g-4">
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad ">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="41" viewBox="0 0 31 41" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M6.54909 27.7215L7.56221 26.7084H14.9744L10.2449 18.163L6.74743 18.8744C5.83022 19.0606 5.09831 19.7516 4.859 20.6567L0.70688 34.2072C0.511332 34.9446 0.670564 35.7315 1.13615 36.3349C1.60174 36.9402 2.32154 37.294 3.08511 37.294H6.55002L6.54909 27.7215Z" fill="white" />
-                          <path d="M30.5439 34.2072L26.3918 20.6567C26.1488 19.7404 25.4029 19.0448 24.4717 18.8679L20.9872 18.2086L16.2773 26.7075H24.2482L25.2613 27.7206V37.2922H28.1675C28.9302 37.2922 29.6509 36.9383 30.1165 36.3331C30.5812 35.7278 30.7376 34.9447 30.5439 34.2072Z" fill="white" />
-                          <path d="M8.57809 37.294H8.29688V37.2977L22.9555 37.2968V37.294H23.2358V28.7365H8.57809V37.294Z" fill="white" />
-                          <path d="M26.7201 38.214H4.52734V40.0465H26.7201V38.214Z" fill="white" />
-                          <path d="M7.72252 12.1838C7.76163 12.2639 7.81284 12.3868 7.86685 12.5153C8.08195 13.0331 8.25701 13.4195 8.50005 13.6467C9.62584 17.3202 12.5311 19.8633 15.618 19.8539C18.6918 19.8437 21.5617 17.2783 22.6456 13.5946C22.884 13.3655 23.0534 12.9809 23.2629 12.4669C23.316 12.3356 23.3644 12.2118 23.4026 12.1317C23.8189 11.2713 23.6755 10.3392 23.0935 9.88569C23.0935 9.85776 23.0935 9.82889 23.0935 9.80096C23.0795 5.24098 22.4845 0.377439 15.5509 0.400718C8.56616 0.423066 7.99815 5.08175 8.01304 9.85031C8.01304 9.87917 8.01398 9.90711 8.01398 9.93505C7.43665 10.395 7.30069 11.3281 7.72252 12.1838ZM8.69746 10.7154L8.71795 10.707C8.83248 10.6651 8.92374 10.5841 8.9824 10.4835L10.192 10.6707C10.3084 10.6874 10.4211 10.625 10.4676 10.518L11.2321 8.75245C12.0972 8.9601 15.3731 9.70039 17.9403 9.69108C18.7356 9.68921 19.3958 9.61193 19.907 9.46201L20.3921 10.6325C20.4322 10.7312 20.5281 10.7927 20.6296 10.7917C20.651 10.7917 20.6761 10.788 20.6985 10.7824L22.1073 10.3867C22.1632 10.5105 22.2666 10.612 22.3988 10.6614L22.4184 10.6679C22.6279 10.7722 22.6968 11.2294 22.4761 11.6838C22.423 11.7937 22.3681 11.9324 22.3066 12.0795C22.221 12.2928 22.045 12.7267 21.9379 12.8431C21.8215 12.9102 21.733 13.021 21.6976 13.1523C20.7767 16.484 18.2709 18.8166 15.6087 18.8259C12.9325 18.8343 10.3922 16.5185 9.43216 13.1942C9.39398 13.0629 9.30738 12.9539 9.18912 12.8878C9.0811 12.7714 8.89859 12.3347 8.81013 12.1205C8.75054 11.9762 8.6928 11.8384 8.6388 11.7304C8.42183 11.2778 8.48701 10.8206 8.69746 10.7154Z" fill="white" />
-                        </svg>
-                      </div>
-                      <div className="card-data-wrap">
-                        <h5 className="mb-0 fw-bold">15</h5>
-                        <small>Total Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="35" viewBox="0 0 31 35" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12.4481 2.27808C14.1496 2.27808 15.5244 3.65285 15.5244 5.3543C15.5244 7.05576 14.1496 8.43053 12.4481 8.43053C10.7467 8.43053 9.37192 7.05576 9.37192 5.3543C9.37192 3.65285 10.7467 2.27808 12.4481 2.27808ZM28.7821 16.0258L25.2567 6.78352H25.2431L27.0806 0.481346L25.665 0.072998L22.0307 12.5276L23.4463 12.936L24.5625 9.08389L26.8901 15.0866H23.4463V16.0258H19.9209C19.9209 16.0122 19.9209 15.9986 19.9209 15.985C19.9209 15.073 19.2539 14.2835 18.342 14.2835H12.6795C12.6795 14.2835 11.087 9.87336 10.5153 8.92055C10.0661 8.18552 9.37192 7.72273 8.45994 7.72273C7.05794 7.72273 5.99624 8.87971 5.23399 10.5539C3.96811 13.3307 3.42364 16.7472 3.73671 19.8915C3.88644 21.171 4.1995 22.2463 4.94814 22.8588H2.42999V12.9496H0.292969V34.3743H2.42999V24.9959H12.5843L11.1686 32.0195C10.9509 33.0812 11.6451 34.1156 12.7068 34.3334C12.8429 34.3607 12.9654 34.3743 13.1015 34.3743C14.0135 34.3743 14.8302 33.7345 15.0207 32.7953L16.2186 26.847L17.7431 30.9441C18.0425 31.7336 18.7912 32.2236 19.5806 32.2236C19.812 32.2236 20.0434 32.1828 20.2612 32.1011C21.2821 31.72 21.7857 30.5902 21.4182 29.583L18.097 20.6674C17.8111 19.9051 17.0761 19.3879 16.2594 19.3879H11.0053V18.1492H28.1559V34.3743H30.293V16.0258H28.7821Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">6</h5>
-                        <small>Completed Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="31" viewBox="0 0 31 31" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M2.87756 0.549496C2.43822 0.110141 1.7259 0.110126 1.28656 0.549466C0.847202 0.988806 0.847187 1.70113 1.28653 2.14047L10.0688 10.9229C9.12209 11.3194 8.45704 12.2546 8.45704 13.3451V15.2201H10.7071V13.3451L10.717 13.2592C10.7558 13.0936 10.9045 12.9701 11.0821 12.9701H12.116L15.8616 16.7158H3.58062C2.51732 16.7158 2.04749 18.0547 2.87759 18.7192L9.95706 24.3858V26.8522C9.95706 28.7162 11.4681 30.2272 13.332 30.2272H18.5752C20.4392 30.2272 21.9502 28.7162 21.9502 26.8522V24.3857L22.8283 23.6826L29.0364 29.8911C29.4758 30.3304 30.1882 30.3304 30.6275 29.8911C31.0669 29.4517 31.0669 28.7393 30.6275 28.3L2.87756 0.549496ZM21.2275 22.082L20.122 22.9671C19.8554 23.1806 19.7002 23.5037 19.7002 23.8452V26.8522C19.7002 27.4735 19.1965 27.9772 18.5752 27.9772H13.332C12.7108 27.9772 12.2071 27.4735 12.2071 26.8522V23.8452C12.2071 23.5037 12.0518 23.1804 11.7851 22.967L6.78643 18.9658H18.1115L21.2275 22.082Z" fill="white" />
-                          <path d="M15.957 9.2208C15.4412 9.2208 14.9455 9.134 14.4841 8.97419L11.7036 6.19368C11.5438 5.73217 11.457 5.23659 11.457 4.72075C11.457 2.23544 13.4718 0.220703 15.957 0.220703C18.4424 0.220703 20.4571 2.23544 20.4571 4.72075C20.4571 7.20606 18.4424 9.2208 15.957 9.2208ZM15.957 2.47073C14.7144 2.47073 13.707 3.4781 13.707 4.72075C13.707 5.9634 14.7144 6.97078 15.957 6.97078C17.1998 6.97078 18.207 5.9634 18.207 4.72075C18.207 3.4781 17.1998 2.47073 15.957 2.47073Z" fill="white" />
-                          <path d="M28.3249 16.7158H22.2266L26.3633 20.8527L29.0281 18.7191C29.858 18.0544 29.3881 16.7158 28.3249 16.7158Z" fill="white" />
-                          <path d="M18.4803 12.9701L16.2305 10.7201H20.8247C22.2019 10.7201 23.3314 11.7808 23.441 13.1298L23.4497 13.3451V15.2201H21.1997V13.3451C21.1997 13.1676 21.0763 13.0188 20.9107 12.98L20.8247 12.9701H18.4803Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">0</h5>
-                        <small>Over Due Task</small>
-                      </div>
-                    </div>
-                  </div>
-
-
-                  <div className="col-md-3 col-sm-6">
-                    <div className="card stat-card text-white text-center p-3 card_bg_grad">
-                      <div className="icon-circle mb-2">
-                        <svg width="31" height="31" viewBox="0 0 31 31" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M22.375 13.7236C26.9314 13.7236 30.625 17.4172 30.625 21.9736C30.625 26.53 26.9314 30.2236 22.375 30.2236C17.8186 30.2236 14.125 26.53 14.125 21.9736C14.125 17.4172 17.8186 13.7236 22.375 13.7236ZM22.375 25.5361C21.8572 25.5361 21.4375 25.9558 21.4375 26.4736C21.4375 26.9914 21.8572 27.4111 22.375 27.4111C22.8928 27.4111 23.3125 26.9914 23.3125 26.4736C23.3125 25.9558 22.8928 25.5361 22.375 25.5361ZM22.75 0.223633C25.4424 0.223633 27.625 2.40624 27.625 5.09863V13.7563C26.9302 13.3116 26.1752 12.9523 25.375 12.6939V8.47363H2.875V22.3486C2.875 23.7984 4.05025 24.9736 5.5 24.9736H13.0953C13.3537 25.7739 13.7129 26.5288 14.1577 27.2236H5.5C2.80761 27.2236 0.625 25.041 0.625 22.3486V5.09863C0.625 2.40624 2.80761 0.223633 5.5 0.223633H22.75ZM22.375 16.7236C21.9608 16.7236 21.625 17.0595 21.625 17.4736V23.4736C21.625 23.8878 21.9608 24.2236 22.375 24.2236C22.7892 24.2236 23.125 23.8878 23.125 23.4736V17.4736C23.125 17.0595 22.7892 16.7236 22.375 16.7236ZM22.75 2.47363H5.5C4.05025 2.47363 2.875 3.64888 2.875 5.09863V6.22363H25.375V5.09863C25.375 3.64888 24.1998 2.47363 22.75 2.47363Z" fill="white" />
-                        </svg>
-
-                      </div>
-                      <div className="card-data-wrap">
-
-                        <h5 className="mb-0 fw-bold">9</h5>
-                        <small>Pending Task</small>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-
-              {/* Table Component */}
-              <div className="table-responsive g-table-wrap g-t-scroll">
-                <Table className="text-center text-center g-table table">
-                  <thead >
-                    <tr>
-                      <th>Email</th>
-                      <th>Accepted Invitation</th>
-                      <th>Logged In</th>
-                      <th>Tracked Time</th>
-                      <th>Send Reminder</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.map((user, index) => (
-                      <tr key={index}>
-                        <td>
-                          <span className="badge bg-light text-dark me-2" style={{ padding: '10px' }}>{user.initials}</span>
-                          {user.email}
-                        </td>
-                        <td className="text-center">{user.accepted ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td className="text-center">{user.loggedIn ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td className="text-center">{user.trackedTime ? <FaCheckCircle color="green" /> : <FaTimesCircle color="red" />}</td>
-                        <td>
-                          <FaPaperPlane color="#a34efc" style={{ cursor: 'pointer' }} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </div>
-            </div>
-            
-            </div>}
+          )}
         </div>
       </div>
 
+      {/* Invite Modal (By Email + Copy Link) */}
       <div className="container mt-3">
-        {/* Invite Button to Open Modal */}
-
-
-        {/* Invite Members Modal */}
         {showModal && (
           <div className="modal fade show d-block" tabIndex={-1} role="dialog">
             <div className="modal-dialog modal-md">
               <div className="modal-content p-4 g-modal-conntent-wrapper rounded-4 g-shadow">
-                {/* Modal Header */}
                 <div className="d-flex justify-content-between align-items-center pb-2 border-bottom">
                   <h5 className="fw-bold">Invite Members</h5>
                   <button className="btn-close" onClick={() => setShowModal(false)}></button>
                 </div>
 
-                {/* Tab Links */}
                 <div className="tabContainer profile-settings-tabs-wrapper mb-4">
                   <div className="um-btns-wrap d-flex">
-                    <button
-                      className={`btn border-0 fw-bold tabButton ${activeTab2 === "email" ? "active position-relative " : ""
-                        }`}
-                      onClick={() => setActiveTab2("email")}
-                    >
+                    <button className={`btn border-0 fw-bold tabButton ${activeTab2 === "email" ? "active position-relative " : ""}`} onClick={() => setActiveTab2("email")}>
                       By Email
-
                     </button>
 
-                    <button
-                      className={`btn border-0 fw-bold tabButton mx-3 ${activeTab2 === "bulk" ? "active position-relative" : ""
-                        }`}
-                      onClick={() => setActiveTab2("bulk")}
-                    >
-                      Bulk Invite
-
-                    </button>
-
-                    <button
-                      className={`btn border-0 fw-bold tabButton ${activeTab2 === "link" ? "active position-relative" : ""
-                        }`}
-                      onClick={() => setActiveTab2("link")}
-                    >
+                    <button className={`btn border-0 fw-bold tabButton ${activeTab2 === "link" ? "active position-relative" : ""}`} onClick={() => setActiveTab2("link")}>
                       Copy Link
-
                     </button>
-
                   </div>
                 </div>
 
-                {/* Tab Content */}
                 {activeTab2 === "email" && (
                   <div>
                     <div className="row mb-3">
                       <div className="col-md-12 mb-3">
                         <label className="fw-bold">Email</label>
-                        <input type="email" className="form-control" placeholder="Example@gmail.com" />
+                        <input type="email" className="form-control" placeholder="example@gmail.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
                       </div>
-                      <div className="col-md-12 mb-3">
-                        <label className="fw-bold">Team</label>
-                        <div className="g-multiselect-wrapper">
-                          <MultiSelect
-                            value={selectedCities}
-                            options={cities}
-                            onChange={(e) => setSelectedCities(e.value)}
-                            optionLabel="name"
-                            placeholder="Select Team"
-                            filter
-                            display="chip" // shows selected values as chips
-                            className="w-full md:w-20rem"
-                          />
-                        </div>
+                      <div className="col-md-6 mb-3">
+                        <label className="fw-bold">Role</label>
+                        <select className="form-control" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
+                          <option>Member</option>
+                          <option>Manager</option>
+                          <option>Viewer</option>
+                        </select>
                       </div>
 
-                      <div className="col-md-12 mb-3">
+                      <div className="col-md-6 mb-3">
                         <label className="fw-bold">Project</label>
-                        <div className="g-multiselect-wrapper">
-                          <MultiSelect
-                            value={selectedProject}
-                            options={projects}
-                            onChange={(e) => setSelectedProject(e.value)}
-                            optionLabel="name"
-                            placeholder="Select Project"
-                            filter
-                            display="chip" // shows selected values as chips
-                            className="w-full md:w-20rem"
-                          />
-                        </div>
-
-
+                        <select className="form-control" value={inviteProjectId ?? ""} onChange={(e) => setInviteProjectId(Number(e.target.value))}>
+                          {loadingProjects ? <option>Loading...</option> : projects.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}
+                        </select>
                       </div>
                     </div>
-                    <a href="#" className="text-primary">+ Add Email</a>
+
+                    {inviteMessage && <div className="alert alert-info">{inviteMessage}</div>}
+
+                    <div className="d-flex justify-content-end mt-3">
+                      <button className="btn g-btn-secondary me-2" onClick={() => setShowModal(false)}>Cancel</button>
+                      <button className="btn g-btn" style={{ backgroundColor: "#A463F2" }} onClick={handleInvite} disabled={isInviting}>
+                        {isInviting ? "Sending..." : "Invite"}
+                      </button>
+                    </div>
                   </div>
                 )}
 
-                {activeTab2 === "bulk" && (
-                  <div className="text-center p-3 border rounded"><div className="mt-3">
-                    <p>
-                      Upload <strong>CSV</strong>, <strong>XLSX</strong>, or <strong>XLSV</strong> files by following our{' '}
-                      <a href="#" className="text-primary text-decoration-none">template format</a>.
-                    </p>
-
-                    <Form.Group controlId="formFile">
-                      <Form.Control
-                        type="file"
-                        accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-                        onChange={handleFileChange}
-                      />
-                    </Form.Group>
-
-                    {file && <p className="mt-2 text-success">Selected File: {file.name}</p>}
-                  </div></div>
-                )}
-
                 {activeTab2 === "link" && (
-                  <div className="text-center p-3 border rounded"><div className="mt-3">
-                    <p>Copy the link to this workspace and send to members:</p>
-
-                    <InputGroup>
-                      <FormControl
-                        readOnly
-                        value={inviteLink}
-                        className="rounded-start"
-                      />
-                      <Button
-
-                        onClick={handleCopy}
-                        className="rounded-end g-btn border-0 shadow-0"
-                      >
-                        <i className="bi bi-clipboard"></i> {copied ? 'Copied!' : 'Copy'}
-                      </Button>
-                    </InputGroup>
-
-                  </div></div>
+                  <div className="text-center p-3 border rounded">
+                    <div className="mt-3">
+                      <p>Copy the link to this workspace and send to members:</p>
+                      <InputGroup>
+                        <FormControl readOnly value={workspaceInviteLink} />
+                        <Button onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(workspaceInviteLink);
+                            alert("Copied!");
+                          } catch {
+                            alert("Copy failed — please copy manually.");
+                          }
+                        }} className="g-btn">Copy</Button>
+                      </InputGroup>
+                    </div>
+                  </div>
                 )}
-
-                {/* Footer Buttons */}
-                <div className="d-flex justify-content-end mt-3">
-                  <button className="btn g-btn-secondary me-2" onClick={() => setShowModal(false)}>Cancel</button>
-                  <button className="btn g-btn" style={{ backgroundColor: "#A463F2" }}>Invite</button>
-                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal Overlay */}
         {showModal && <div className="modal-backdrop fade show"></div>}
       </div>
 
-
-      <style jsx>
-        {
-          `
-  .card_wrapper_bg_grad {
-  background: linear-gradient(90deg, #b07af345 0%, #d0f8fe66 46.15%, #b07af347 69.23%, #d0f8fe66 100%);
-  box-shadow: 0 1px 9px #8c8c8cc9;
-  border-radius: 15px;
-}
-
-.stat-card {
-  border: none;
-  border-radius: 1.5rem;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  transition: transform .3s;
-  display: flex;
-  padding: 40px 20px !important;
-}
-
-
-.stat-card {
-  border: none;
-  border-radius: 1.5rem;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  transition: transform .3s;
-  display: flex;
-  padding: 40px 20px !important
-}
-
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 .5rem 1rem #00000026
-}
-
-.stat-card .icon-circle {
-  color: #8e44ad;
-  background-color: #b980ff;
-  border-radius: 50%;
-  justify-content: center;
-  align-items: center;
-  width: 60px;
-  height: 60px;
-  padding: 10px;
-  display: flex
-}
-
-.stat-card .text-purple {
-  color: #8e44ad
-}
-
-.stat-card .card-data-wrap h5 {
-  text-align: end;
-  font-size: 24px;
-  font-weight: 500;
-  margin-bottom: 14px !important
-}
-
-.stat-card .card-data-wrap small {
-  font-size: 18px;
-  font-weight: 500
-}
-
-.card_bg_grad {
-    background: linear-gradient(#9447f2 0%, #602e9d 100%);
-    box-shadow: 0 2px 16px #d7ceff;
-    border-radius: 20px;
-}
-  `
+      {/* styling kept from your original */}
+      <style jsx>{`
+        .card_wrapper_bg_grad {
+          background: linear-gradient(90deg, #b07af345 0%, #d0f8fe66 46.15%, #b07af347 69.23%, #d0f8fe66 100%);
+          box-shadow: 0 1px 9px #8c8c8cc9;
+          border-radius: 15px;
         }
-      </style>
+        .stat-card {
+          border: none;
+          border-radius: 1.5rem;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+          transition: transform .3s;
+          display: flex;
+          padding: 40px 20px !important;
+        }
+        .stat-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 .5rem 1rem #00000026;
+        }
+        .stat-card .icon-circle {
+          color: #8e44ad;
+          background-color: #b980ff;
+          border-radius: 50%;
+          justify-content: center;
+          align-items: center;
+          width: 60px;
+          height: 60px;
+          padding: 10px;
+          display: flex;
+        }
+      `}</style>
     </div>
-
-
   );
 }

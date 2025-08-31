@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'leave',
     'shifts',
     'reports',
+    
  
 ]
 import os 
@@ -77,6 +78,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3015",
 ]
 MIDDLEWARE = [
+    
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -88,6 +90,11 @@ MIDDLEWARE = [
     
 
 ]
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -176,3 +183,14 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.TokenAuthentication",
     ],
 }
+
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "m.jamalraja436@gmail.com"
+EMAIL_HOST_PASSWORD = "tbfz zlui uzbg fbnf"
+DEFAULT_FROM_EMAIL = "no-reply@yourdomain.com"
+# settings.py
+

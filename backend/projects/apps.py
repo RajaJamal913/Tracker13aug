@@ -13,3 +13,12 @@ class ProjectsConfig(AppConfig):
 
     def ready(self):
         import projects.signals  # noqa
+# projects/apps.py
+from django.apps import AppConfig
+
+class ProjectsConfig(AppConfig):
+    name = "projects"
+
+    def ready(self):
+        # import signals so they register
+        from . import signals  # noqa

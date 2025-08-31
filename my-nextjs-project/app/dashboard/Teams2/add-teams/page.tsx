@@ -1,110 +1,133 @@
-// add teams oage 
+"use client";
+import { useEffect, useState } from "react";
+import { MultiSelect } from "primereact/multiselect";
 
-'use client';
-import { useState } from 'react';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Button, Card, Col, Container, Row, Tab, Tabs } from 'react-bootstrap';
-
-import 'primereact/resources/themes/lara-light-blue/theme.css'; // or another theme
-import 'primereact/resources/primereact.min.css';
-import 'primeicons/primeicons.css';
-
-import { MultiSelect } from 'primereact/multiselect';
-// build add 
-interface City {
+interface Member {
+  id: number;
   name: string;
-  code: string;
+  email: string;
 }
-export default function Home() {
 
+interface Team {
+  id: number;
+  name: string;
+  members: Member[];
+}
 
-// for MultiSelect selectbox 
-// const [selectedCities, setSelectedCities] = useState([]);
-// const [addedCities, setAddedCities] = useState([]);
-  const [selectedCities, setSelectedCities] = useState<City[]>([]);
+export default function TeamsPage() {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<Member[]>([]);
+  const [teamName, setTeamName] = useState("");
+  const [teams, setTeams] = useState<Team[]>([]);
 
-  const [addedCities, setAddedCities] = useState<City[]>([]);
+  // fetch all members
+  useEffect(() => {
+    fetch("/api/members/") // adjust API endpoint
+      .then((res) => res.json())
+      .then((data) => setMembers(data))
+      .catch((err) => console.error("Failed to load members", err));
+  }, []);
 
+  // fetch existing teams
+  useEffect(() => {
+    fetch("/api/teams/") // adjust API endpoint
+      .then((res) => res.json())
+      .then((data) => setTeams(data))
+      .catch((err) => console.error("Failed to load teams", err));
+  }, []);
 
+  const handleCreateTeam = async () => {
+    if (!teamName.trim() || selectedMembers.length === 0) return;
 
+    const newTeam = {
+      name: teamName,
+      member_ids: selectedMembers.map((m) => m.id),
+    };
 
-const handleAddCities = () => {
-  // Prevent duplicates
-  const newCities = selectedCities.filter(
-      (city) => !addedCities.some((added) => added.code === city.code)
-  );
-  setAddedCities([...addedCities, ...newCities]);
-  setSelectedCities([]); // Clear the selected cities
-};
+    try {
+      const res = await fetch("/api/teams/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTeam),
+      });
 
-// build change 
-// const handleRemoveCity = (code) => {
-//   setAddedCities(addedCities.filter((city) => city.code !== code));
-// };
-  const handleRemoveCity = (code: string) => {
-    setAddedCities(addedCities.filter((city) => city.code !== code));
+      if (res.ok) {
+        const savedTeam = await res.json();
+        setTeams((prev) => [...prev, savedTeam]);
+        setTeamName("");
+        setSelectedMembers([]);
+      }
+    } catch (error) {
+      console.error("Failed to create team:", error);
+    }
   };
 
-
-const handleClearAll = () => {
-  setAddedCities([]);
-};
-
-const cities = [
-    { name: 'Hamza', code: 'DT' },
-    { name: 'Usman', code: 'PM' },
-    { name: 'Hina', code: 'QA' }
-    
-];
-
-
-const [selectedProject, setSelectedProject] = useState([]);
-
-const projects = [
-    { name: 'Getting Started with WewWizTracker', code: 'DT' }
-   
-    
-];
-// for MultiSelect selectbox 
+  const handleDeleteTeam = async (id: number) => {
+    try {
+      await fetch(`/api/teams/${id}/`, { method: "DELETE" });
+      setTeams((prev) => prev.filter((t) => t.id !== id));
+    } catch (error) {
+      console.error("Failed to delete team:", error);
+    }
+  };
 
   return (
     <div className="py-5 container">
-        <div className="card flex flex-col gap-4 items-start w-full max-w-md p-4">
-            <MultiSelect
-                value={selectedCities}
-                options={cities}
-                onChange={(e) => setSelectedCities(e.value)}
-                optionLabel="name"
-                placeholder="Select members to add in team"
-                filter
-                display="chip"
-                className="w-full"
-            />
-          
-            <button type="button" onClick={handleAddCities} className="btn g-btn">Add</button>
-            {addedCities.length > 0 && (
-                <div className="mt-4 w-full">
-                    <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
-                        <h4>Added Teams:</h4>
-                       
-                        <button type="button" onClick={handleClearAll} className="btn g-btn">Remove All</button>
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1">
-                        {addedCities.map((city) => (
-                            <li key={city.code} className="flex justify-between items-center">
-                              <div className="teams-wrap">
-                              <span className='pv-teams'>{city.name}</span>
-                              </div>
-                                
-                                
-                                <button type="button" onClick={() => handleRemoveCity(city.code)} className="btn g-btn">Remove</button>
-                            </li>
-                        ))}
-                    </ul>
+      <div className="card p-4 max-w-lg mx-auto">
+        <h3>Create Team</h3>
+        <input
+          type="text"
+          className="form-control mb-3"
+          placeholder="Team name"
+          value={teamName}
+          onChange={(e) => setTeamName(e.target.value)}
+        />
+
+        <MultiSelect
+          value={selectedMembers}
+          options={members}
+          onChange={(e) => setSelectedMembers(e.value)}
+          optionLabel="name"
+          placeholder="Select team members"
+          filter
+          display="chip"
+          className="w-full mb-3"
+        />
+
+        <button className="btn btn-primary" onClick={handleCreateTeam}>
+          Create Team
+        </button>
+      </div>
+
+      <div className="mt-5">
+        <h3>Existing Teams</h3>
+        {teams.length === 0 && <p>No teams created yet.</p>}
+        <ul className="list-group">
+          {teams.map((team) => (
+            <li
+              key={team.id}
+              className="list-group-item d-flex justify-content-between align-items-center"
+            >
+              <div>
+                <strong>{team.name}</strong>
+                <div>
+                  {team.members.map((m) => (
+                    <span key={m.id} className="badge bg-secondary me-1">
+                      {m.name}
+                    </span>
+                  ))}
                 </div>
-            )}
-        </div>
-      
+              </div>
+              <button
+                className="btn btn-sm btn-danger"
+                onClick={() => handleDeleteTeam(team.id)}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

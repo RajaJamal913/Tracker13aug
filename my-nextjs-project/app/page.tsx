@@ -73,6 +73,9 @@ export default function LandingPage() {
                   <a className="btn btn-outline-light ms-3" href="/UserSignup" style={{border:"2px solid"}}>
                     Sign up
                   </a>
+                   <a className="btn btn-outline-light ms-3" href="/UserLogin" style={{border:"2px solid"}}>
+                    Login
+                  </a>
                 </li>
               </ul>
             </div>

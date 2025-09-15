@@ -338,12 +338,6 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             <span>Teams</span>
             </Link>
           </li>
-          <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link">
-            <Link href="/dashboard/project-viewers">
-             <FaEye />
-            <span>Project Viewers</span>
-            </Link>
-          </li>
           <li className="hover:bg-white hover:text-black p-2 d-flex items-center gap-2 transition-all nav-link d-none">
             <Link href="/dashboard/tasks">
              <FaTasks />
@@ -423,12 +417,12 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             <ul className="pl-6 space-y-2">
               <li className="hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all">
                 <FaCamera />
-                <Link href="" className="underline text-white">
+                <Link href="/dashboard/2fa" className="underline text-white">
                   2 Factor Authentication
                 </Link>
               </li>
              
-              <li className="flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all">
+              {/* <li className="flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all">
                 <FaChartLine />
                 <Link href="/dashboard/monitoring/daily-activity" className="underline text-blue">
                   Data Encryption
@@ -439,7 +433,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
                 <Link href="/dashboard/monitoring/productivity" className="underline text-blue">
                   Productivity
                 </Link>
-              </li>
+              </li> */}
             </ul>
           )}
 

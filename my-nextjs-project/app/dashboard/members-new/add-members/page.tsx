@@ -8,17 +8,6 @@ import "primereact/resources/themes/lara-light-blue/theme.css";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 
-/**
- * Members + Invites page with "Create new project" option in the project dropdown.
- *
- * Notes:
- * - inviteProjectId now can be number | "new" | null.
- * - If "new" is chosen, user must provide newProjectName.
- * - When sending invite for a new project, payload includes:
- *     { email, role, project: null, project_name: "<name>", create_project: true }
- *   Adapt this to match your backend contract.
- */
-
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api").replace(/\/$/, "");
 
 type Project = { id: number; name: string };
@@ -48,54 +37,70 @@ type InviteAPI = {
 };
 
 export default function MembersPage() {
-  // Tabs / modal state
   const [activeTab, setActiveTab] = useState("members");
   const [activeTab2, setActiveTab2] = useState("email");
   const [showModal, setShowModal] = useState(false);
 
-  // Invite form states
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("Member");
-  // inviteProjectId can be number | 'new' | null
   const [inviteProjectId, setInviteProjectId] = useState<number | "new" | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
-  // Data states
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [archivedMembers, setArchivedMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<InviteAPI[]>([]);
 
-  // loading flags
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [loadingInvites, setLoadingInvites] = useState(false);
 
-  // UI toggle: show only invited or all members (kept for compatibility but we force invited view)
   const [showOnlyInvited, setShowOnlyInvited] = useState(true);
 
-  // Pending invite token (from URL or localStorage)
   const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
-  // Notification/banner if pending token exists and user not authenticated
   const [pendingInviteBanner, setPendingInviteBanner] = useState<string | null>(null);
 
-  // Simple email validator
   const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-  // read token helper - uses exact key "token"
+  // Improved readToken: check common keys used by classic DRF TokenAuth and JWT (Simple JWT)
   const readToken = () => {
     if (typeof window === "undefined") return null;
-    return localStorage.getItem("token") || null;
+    const keys = ["token", "access", "authToken", "jwt", "accessToken"];
+    for (const k of keys) {
+      const v = localStorage.getItem(k);
+      if (v) return v;
+    }
+    return null;
+  };
+
+  const makeAuthHeaderFromToken = (rawToken?: string | null) => {
+    if (!rawToken) return {};
+    const token = rawToken.trim();
+    if (/^(Bearer|Token)\s+/i.test(token)) {
+      return { Authorization: token };
+    }
+    // heuristic: JWT has three dot-separated parts
+    if (token.split(".").length === 3) {
+      return { Authorization: `Bearer ${token}` };
+    }
+    return { Authorization: `Token ${token}` };
+  };
+
+  const makeHeadersWithToken = (): HeadersInit => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const token = readToken();
+    const authHeader = makeAuthHeaderFromToken(token);
+    return { ...headers, ...(authHeader as Record<string, string>) };
   };
 
   // -----------------------
-  // Normalize helpers
+  // Normalize helpers (unchanged)
   // -----------------------
   const normalizeMember = (raw: any): Member => {
-    const member: Member = {};
+    const member: Member = {} as Member;
     if (!raw) return member;
     member.id = raw.id ?? raw.pk ?? undefined;
     member.full_name = raw.full_name ?? (raw.user && raw.user.full_name) ?? raw.name ?? raw.username ?? undefined;
@@ -112,7 +117,7 @@ export default function MembersPage() {
   };
 
   const normalizeInvite = (raw: any): InviteAPI => {
-    const invite: InviteAPI = {};
+    const invite: InviteAPI = {} as InviteAPI;
     if (!raw) return invite;
     invite.id = raw.id ?? raw.pk ?? undefined;
     invite.email = raw.email ?? raw.invitee_email ?? undefined;
@@ -129,18 +134,14 @@ export default function MembersPage() {
   };
 
   const getProjectNameFrom = (proj: any, projName?: string | null) => {
-    // Prefer explicit project_name from the invite/server
     if (projName) return projName;
     if (proj == null || proj === "") return "-";
-    // If project is a number or numeric string, try to lookup from `projects`
     const num = typeof proj === "number" ? proj : Number(proj);
     if (!Number.isNaN(num)) {
       const found = projects.find((p) => p.id === num);
       return found ? found.name : String(proj);
     }
-    // If it's an object, try to read .name
     if (typeof proj === "object") return proj.name ?? String(proj.id ?? "-");
-    // Fallback to the raw value
     return String(proj);
   };
 
@@ -150,9 +151,6 @@ export default function MembersPage() {
   useEffect(() => {
     const token = readToken();
     if (!token) {
-      // keep UI usable for unauthenticated users but still offer "Create new project"
-      // If you prefer to hide the projects list entirely for unauthenticated users,
-      // remove this block.
       setProjects([{ id: 1, name: "Getting Started with WewWizTracker" }]);
       setInviteProjectId((prev) => prev ?? 1);
     }
@@ -163,42 +161,29 @@ export default function MembersPage() {
   const fetchProjects = async () => {
     setLoadingProjects(true);
     try {
-      const token = readToken();
+      const headers = makeHeadersWithToken();
       const res = await fetch(`${API_BASE}/projects/`, {
         method: "GET",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Token ${token}` } : {}),
-        },
+        headers,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data.map((p) => ({ id: p.id, name: p.name || p.title || String(p.id) })) : [];
       if (list.length) {
         setProjects(list);
-        // only change inviteProjectId if it's null (first load)
         setInviteProjectId((prev) => (prev === null ? list[0].id : prev));
       } else {
-        // no existing projects -> default to "new project"
         setProjects([]);
         setInviteProjectId("new");
       }
     } catch (err) {
       console.error("Error fetching projects:", err);
-      // keep a small fallback so UI doesn't break; default to "new project" if no meaningful list
       setProjects((prev) => (prev.length ? prev : []));
       setInviteProjectId((prev) => (prev === null ? "new" : prev));
     } finally {
       setLoadingProjects(false);
     }
-  };
-
-  const makeHeadersWithToken = (): HeadersInit => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const token = readToken();
-    if (token) headers["Authorization"] = `Token ${token}`;
-    return headers;
   };
 
   const fetchMembers = async () => {
@@ -247,7 +232,6 @@ export default function MembersPage() {
       setInvites(list);
     } catch (err) {
       console.error("fetchInvites error:", err);
-      // keep current invites (optimistic) on network error
     } finally {
       setLoadingInvites(false);
     }
@@ -276,7 +260,6 @@ export default function MembersPage() {
     }
   };
 
-  // initial fetch of lists
   useEffect(() => {
     fetchMembers();
     fetchInvites();
@@ -288,14 +271,9 @@ export default function MembersPage() {
   // Invite POST + optimistic handling
   // -----------------------
   const postInvite = async (email: string, projectId: number | "new", role: string, projectName?: string) => {
-    const token = readToken();
-    if (!token) throw new Error("No token found. User might not be authenticated.");
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Token ${token}`,
-    };
+    const headers = makeHeadersWithToken();
+    if (!headers || !(headers as Record<string, string>).Authorization) throw new Error("No token found. User might not be authenticated.");
 
-    // If projectId === 'new' include project_name and create_project flag.
     const body: any =
       projectId === "new"
         ? { email, role, project: null, project_name: projectName ?? null, create_project: true }
@@ -329,7 +307,7 @@ export default function MembersPage() {
 
     const token = readToken();
     if (!token) {
-      setInviteMessage("Not authenticated. Please log in and ensure a token is stored under localStorage key 'token'.");
+      setInviteMessage("Not authenticated. Please log in and ensure a token is stored under localStorage key 'token' or 'access'.");
       return;
     }
 
@@ -401,10 +379,7 @@ export default function MembersPage() {
         setInviteEmail("");
         setNewProjectName("");
 
-        // If server created a new project, refresh projects list so it appears in the dropdown
         await fetchProjects();
-
-        // refresh members for canonical state (skip fetchInvites to avoid 405 issues unless backend supports it)
         await fetchMembers();
       } else {
         setInvites((prev) => prev.filter((iv) => (iv.email ?? "").toLowerCase() !== inviteEmail.toLowerCase()));
@@ -433,27 +408,22 @@ export default function MembersPage() {
   };
 
   // -----------------------
-  // Accept invite token handling (unchanged)
+  // Accept invite token handling (updated to use header helper)
   // -----------------------
   const acceptInviteToken = async (tokenToAccept: string) => {
     if (!tokenToAccept) return { ok: false, message: "no token" };
-    const auth = readToken();
-    if (!auth) return { ok: false, message: "not authenticated" };
+    const headers = makeHeadersWithToken();
+    if (!headers || !(headers as Record<string, string>).Authorization) return { ok: false, message: "not authenticated" };
 
     try {
       const res = await fetch(`${API_BASE}/invites/accept/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Token ${auth}`,
-        },
+        headers,
         body: JSON.stringify({ token: tokenToAccept }),
       });
 
       if (res.ok) {
-        // refresh local state
         await Promise.all([fetchMembers(), fetchInvites()]);
-        // remove pending token
         localStorage.removeItem("pending_invite_token");
         setPendingInviteToken(null);
         setPendingInviteBanner(null);
@@ -469,7 +439,6 @@ export default function MembersPage() {
     }
   };
 
-  // read invite token from URL (token, invite, invite_token)
   const readInviteTokenFromUrl = (): string | null => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
@@ -481,7 +450,6 @@ export default function MembersPage() {
     return null;
   };
 
-  // On mount: detect URL token; if authenticated accept immediately; else save pending token
   useEffect(() => {
     const t = readInviteTokenFromUrl();
     if (t) {
@@ -514,7 +482,6 @@ export default function MembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen for storage changes (login) to accept pending invite
   useEffect(() => {
     const handler = (ev: StorageEvent) => {
       if (ev.key === "token" && ev.newValue) {
@@ -536,7 +503,6 @@ export default function MembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Poll quickly after mount to detect login in same tab
   useEffect(() => {
     const pending = localStorage.getItem("pending_invite_token");
     if (!pending) return;
@@ -552,14 +518,12 @@ export default function MembersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // invite helpers to interpret invite flags
   const inviteAccepted = (i: InviteAPI) => !!(i.is_accepted || i.accepted_at);
   const inviteLoggedIn = (i: InviteAPI) => !!(i.logged_in);
   const inviteTrackedTime = (i: InviteAPI) => !!(i.tracked_time || (i.tracked_seconds && i.tracked_seconds > 0));
 
   const workspaceInviteLink = typeof window !== "undefined" ? `${window.location.origin}/app/join-invite/abc123` : "";
 
-  // fallback sample members to preserve the UI while loading
   const sampleMembers: Member[] = Array.from({ length: 14 }, (_, i) => ({
     id: i + 1,
     name: `Member ${i + 1}`,
@@ -568,7 +532,6 @@ export default function MembersPage() {
     project: "-",
   }));
 
-  // invitedMembersDisplay (merge invites + members by email)
   const invitedMembersDisplay: Member[] = React.useMemo(() => {
     const inviteEmails = new Set<string>();
     invites.forEach((iv) => { if (iv.email) inviteEmails.add(iv.email.toLowerCase()); });
@@ -597,17 +560,12 @@ export default function MembersPage() {
 
   return (
     <div className="container-fluid">
-      {/* Banner if pending invite exists and user not authenticated */}
       {pendingInviteBanner && (
         <div className="alert alert-info mt-2">
-          {pendingInviteBanner}{" "}
-          <strong>
-            After you sign in, the invite will be accepted automatically.
-          </strong>
+          {pendingInviteBanner} <strong>After you sign in, the invite will be accepted automatically.</strong>
         </div>
       )}
 
-      {/* heading + Invite button */}
       <div className="row mb-3">
         <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
           <h2 className="page-heading-wrapper">Members</h2>
@@ -619,7 +577,6 @@ export default function MembersPage() {
         </div>
       </div>
 
-      {/* tabs */}
       <div className="row mt-3">
         <div className="tabContainer profile-settings-tabs-wrapper mb-4 multi-style">
           <div className="um-btns-wrap d-flex align-items-center">
@@ -644,7 +601,6 @@ export default function MembersPage() {
               Archived
             </button>
 
-            {/* Toggle between invited-only and all members - hidden because we force invited-only view */}
             <div style={{ marginLeft: "1rem", display: "none" }}>
               <small className="text-muted me-2">View:</small>
               <Button
@@ -667,7 +623,6 @@ export default function MembersPage() {
         </div>
 
         <div className="col-lg-12 px-0">
-          {/* Members table - now ALWAYS shows invited members only */}
           {activeTab === "members" && (
             <div>
               <div className="table-responsive g-table-wrap g-t-scroll">
@@ -710,7 +665,6 @@ export default function MembersPage() {
             </div>
           )}
 
-          {/* Onboarding / invites table */}
           {activeTab === "onboarding" && (
             <div>
               <div className="container-fluid mt-4">
@@ -752,7 +706,6 @@ export default function MembersPage() {
             </div>
           )}
 
-          {/* Archived table */}
           {activeTab === "archived" && (
             <div>
               <div className="table-responsive g-table-wrap g-t-scroll">
@@ -792,7 +745,6 @@ export default function MembersPage() {
         </div>
       </div>
 
-      {/* Invite Modal (By Email + Copy Link) */}
       <div className="container mt-3">
         {showModal && (
           <div className="modal fade show d-block" tabIndex={-1} role="dialog">
@@ -847,13 +799,11 @@ export default function MembersPage() {
                             }
                           }}
                         >
-                          {/* explicit Create new option first */}
                           <option value="new">+ Create new project…</option>
 
                           {loadingProjects ? (
                             <option value="">Loading...</option>
                           ) : projects.length === 0 ? (
-                            // If no projects exist we already defaulted to "new"; still show a disabled placeholder
                             <option value="" disabled>
                               No existing projects
                             </option>
@@ -867,7 +817,6 @@ export default function MembersPage() {
                         </select>
                       </div>
 
-                      {/* If user selected "Create new project", show an input for the new project's name */}
                       {inviteProjectId === "new" && (
                         <div className="col-md-12 mb-3">
                           <label className="fw-bold">New Project Name</label>
@@ -927,7 +876,6 @@ export default function MembersPage() {
         {showModal && <div className="modal-backdrop fade show"></div>}
       </div>
 
-      {/* styling kept from your original */}
       <style jsx>{`
         .card_wrapper_bg_grad {
           background: linear-gradient(90deg, #b07af345 0%, #d0f8fe66 46.15%, #b07af347 69.23%, #d0f8fe66 100%);

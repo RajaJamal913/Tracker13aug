@@ -1,154 +1,93 @@
 "use client";
-// This tells Next.js to never statically prerender this route
-export const dynamic = "force-dynamic";
-
-import React, { useEffect, useState } from "react";
-import Image from "next/image";
-import "bootstrap/dist/css/bootstrap.min.css";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import "bootstrap/dist/css/bootstrap.min.css";
+ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
+export default function ResetPasswordPage() {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-export default function LoginPage() {
+  // Prefill email/token from sessionStorage for UX
+  const [email, setEmail] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+
   useEffect(() => {
-    // If you need Bootstrap JS (dropdowns, modals), uncomment:
-    // import("bootstrap/dist/js/bootstrap.bundle.min.js");
+    try {
+      const e = sessionStorage.getItem("passwordResetEmail");
+      const t = sessionStorage.getItem("passwordResetToken");
+      if (e) setEmail(e);
+      if (t) setResetToken(t);
+    } catch (err) {
+      // ignore storage errors
+    }
   }, []);
 
-  const router = useRouter();
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
-
-  // --- Login state
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(""); // visible message to user
-  const [showPassword, setShowPassword] = useState(false);
-
-  // helper to read cookie (for CSRF/session auth)
-  function getCookie(name: string) {
-    if (typeof document === "undefined") return "";
-    const match = document.cookie.match("(^|;)\\s*" + name + "\\s*=\\s*([^;]+)");
-    return match ? decodeURIComponent(match.pop() || "") : "";
-  }
-
-  // wrapper to attach Authorization header automatically (uses access or token)
-  function authFetch(input: RequestInfo, init: RequestInit = {}) {
-    const access = localStorage.getItem("access") || localStorage.getItem("token");
-    const headers = {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-      ...(access ? { Authorization: `Bearer ${access}` } : {}),
-    } as Record<string, string>;
-    return fetch(input, { ...init, headers });
-  }
-
-  // optional: refresh Simple JWT access token (returns true if refreshed)
-  async function refreshAccessIfNeeded(): Promise<boolean> {
-    const refresh = localStorage.getItem("refresh");
-    if (!refresh) return false;
-    try {
-      const res = await fetch(`${API_BASE}/api/token/refresh/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (data.access) {
-        localStorage.setItem("access", data.access);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error("refresh error", err);
-      return false;
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (loading) return;
-    setMessage("");
-    setLoading(true);
+    setMessage(null);
+    setError(null);
 
+    if (!email || !resetToken) {
+      setError("Missing reset token or email. Please restart the forgot password flow.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPass) {
+      setError("Passwords do not match!");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login/`, {
+      const res = await fetch(`${API_BASE}/password-reset/confirm/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-        // credentials: "include", // enable if you use session auth + CSRF cookies
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          reset_token: resetToken,
+          new_password: password,
+          confirm_password: confirmPass,
+        }),
       });
 
-      // log basic info for debugging (uncomment while debugging)
-      // console.log("Login HTTP", res.status, res.statusText);
-      // console.log("Content-Type:", res.headers.get("content-type"));
+      // Try parse JSON, fall back to text
+      const text = await res.text();
+      let data: any = {};
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
 
-      // safe JSON parsing only when content-type is JSON
-      const contentType = res.headers.get("content-type") || "";
-      let data: any = null;
-      if (contentType.includes("application/json")) {
+      if (res.ok) {
+        // success
+        setMessage("Password changed successfully. Redirecting to login...");
+        setError(null);
+        // cleanup tokens (optional)
         try {
-          data = await res.json();
-        } catch (err) {
-          console.error("Failed to parse JSON response:", err);
-          // keep raw data null
-        }
-      } else {
-        // non-JSON response - useful for debugging server HTML errors
-        try {
-          const raw = await res.text();
-          console.warn("Non-JSON response body:", raw);
+          sessionStorage.removeItem("passwordResetToken");
+          // keep email or remove depending on preference:
+          sessionStorage.removeItem("passwordResetEmail");
         } catch (_) {}
-      }
-
-      if (!res.ok) {
-        // normalize server error -> user-friendly string
-        let errMsg: string = `Login failed (HTTP ${res.status})`;
-        if (data) {
-          // prefer common patterns: non_field_errors (array), detail (string), field errors
-          if (data.non_field_errors) {
-            errMsg = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(" ") : String(data.non_field_errors);
-          } else if (data.detail) {
-            errMsg = String(data.detail);
-          } else {
-            // try to build from field errors object
-            try {
-              const entries = Object.entries(data);
-              errMsg = entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`).join(" ");
-            } catch {
-              errMsg = JSON.stringify(data);
-            }
-          }
-        }
-        setMessage(`❌ ${errMsg}`);
-        setLoading(false);
-        return;
-      }
-
-      // on success — handle several common token shapes
-      // 1) DRF Token -> { token: "abc" }
-      // 2) Simple JWT -> { access: "...", refresh: "..." }
-      // 3) access-only -> { access: "..." }
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
-      } else if (data?.access && data?.refresh) {
-        localStorage.setItem("access", data.access);
-        localStorage.setItem("refresh", data.refresh);
-      } else if (data?.access) {
-        localStorage.setItem("access", data.access);
+        setTimeout(() => router.push("/userLogin"), 900);
       } else {
-        // if server returned something else (or nothing) show notice but still allow redirect if desired
-        setMessage("❗ Login succeeded but server did not return a recognizable token.");
-        // optionally return here to avoid redirect:
-        // setLoading(false);
-        // return;
+        // show helpful server message if available
+        const serverMsg =
+          data.detail ||
+          (data.confirm_password && Array.isArray(data.confirm_password) ? data.confirm_password.join(", ") : null) ||
+          (data.new_password && Array.isArray(data.new_password) ? data.new_password.join(", ") : null) ||
+          data.error ||
+          data.raw ||
+          `HTTP ${res.status}`;
+        setError(String(serverMsg));
       }
-
-      // good UX: small delay to let storage settle and show success (optional)
-      router.push("/dashboard");
-    } catch (err) {
-      console.error(err);
-      setMessage("❌ Unable to reach server. Check API URL or network.");
+    } catch (err: any) {
+      console.error("Reset password error:", err);
+      setError("Network error. Check your connection or server.");
     } finally {
       setLoading(false);
     }
@@ -218,81 +157,58 @@ export default function LoginPage() {
             {/* Left Section */}
             <div className="col-md-5 d-flex align-items-center justify-content-center left-pannel px-0 position-relative">
               <div className="text-center px-4">
-                <Image src="/assets/images/login-graphic.webp" alt="Login Illustration" width={400} height={300} />
+                <img src="/assets/images/Reset-password.png" alt="Login Illustration" width={400} height={300} />
               </div>
             </div>
 
             {/* Right Section */}
             <div className="col-md-4 d-flex align-items-center justify-content-center bg-white px-0 right-pannel">
-              <div className="welcome-banner-bar">
-                <h6 className="welcome-banner-txt text-white mb-2 fw-semibold text-end">Welcome back</h6>
-              </div>
-
               <div className="p-4 w-100 form-wrapper">
-                <h3 className="fw-bold text-purple mb-4">Login your Account</h3>
+                <h3 className="fw-bold text-purple mb-4">Reset Password</h3>
 
-                {/* --- wired form (login API integrated) --- */}
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleChangePassword}>
                   <div className="mb-3">
-                    <label className="form-label text-muted" htmlFor="username">
-                      UserEmail
-                    </label>
-                    <input id="email" type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                    <label className="form-label">New Password</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      placeholder="Enter new password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      disabled={loading}
+                    />
                   </div>
 
-                  <div className="mb-4">
-                    <label className="form-label text-muted" htmlFor="password">
-                      Password
-                    </label>
-                    <div className="position-relative">
-                      <input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        className="form-control rounded-0"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        autoComplete="current-password"
-                        aria-label="Password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((s) => !s)}
-                        className="btn btn-link position-absolute end-0 top-50 translate-middle-y me-3 p-0"
-                        style={{ textDecoration: "none" }}
-                        aria-pressed={showPassword}
-                      >
-                        {showPassword ? "Hide" : "Show"}
-                      </button>
-                    </div>
+                  <div className="mb-3">
+                    <label className="form-label">Confirm New Password</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      placeholder="Confirm new password"
+                      value={confirmPass}
+                      onChange={(e) => setConfirmPass(e.target.value)}
+                      required
+                      minLength={8}
+                      disabled={loading}
+                    />
                   </div>
+
+                  {error && <div className="alert alert-danger">{error}</div>}
+                  {message && <div className="alert alert-success">{message}</div>}
 
                   <div className="text-center">
-                    <button
-                      className="btn g-btn mx-auto px-5"
-                      type="submit"
-                      disabled={loading}
-                      aria-busy={loading}
-                    >
-                      {loading ? "Logging in..." : "Login"}
+                    <button type="submit" className="btn g-btn" disabled={loading}>
+                      {loading ? "Saving..." : "Change Password"}
                     </button>
                   </div>
-
-                  <div className="mt-3 text-center no-account-wrapper">
-                    <small>
-                      Don’t have an account? <a href="/UserSignup" className="fw-bold">Sign Up</a>
-                    </small>
-                    <br />
-                    <a href="/forgot-password" className="text-purple small d-block mt-2">Forgot Password</a>
-                  </div>
-
-                  {/* message */}
-                  {message && (
-                    <div className="alert alert-info mt-3" role="alert" aria-live="polite">
-                      {message}
-                    </div>
-                  )}
                 </form>
+
+                <div style={{ marginTop: 8, fontSize: 13, color: "#666" }}>
+                  <div><strong>Email:</strong> {email ?? "—"}</div>
+                  <div><strong>Token:</strong> {resetToken ? "present" : "missing"}</div>
+                </div>
               </div>
             </div>
           </div>

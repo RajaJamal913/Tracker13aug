@@ -1,154 +1,64 @@
 "use client";
-// This tells Next.js to never statically prerender this route
-export const dynamic = "force-dynamic";
-
-import React, { useEffect, useState } from "react";
-import Image from "next/image";
-import "bootstrap/dist/css/bootstrap.min.css";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import "bootstrap/dist/css/bootstrap.min.css";
 
-export default function LoginPage() {
-  useEffect(() => {
-    // If you need Bootstrap JS (dropdowns, modals), uncomment:
-    // import("bootstrap/dist/js/bootstrap.bundle.min.js");
-  }, []);
-
-  const router = useRouter();
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
-
-  // --- Login state
-  const [username, setUsername] = useState("");
+ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(""); // visible message to user
-  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
 
-  // helper to read cookie (for CSRF/session auth)
-  function getCookie(name: string) {
-    if (typeof document === "undefined") return "";
-    const match = document.cookie.match("(^|;)\\s*" + name + "\\s*=\\s*([^;]+)");
-    return match ? decodeURIComponent(match.pop() || "") : "";
-  }
-
-  // wrapper to attach Authorization header automatically (uses access or token)
-  function authFetch(input: RequestInfo, init: RequestInit = {}) {
-    const access = localStorage.getItem("access") || localStorage.getItem("token");
-    const headers = {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-      ...(access ? { Authorization: `Bearer ${access}` } : {}),
-    } as Record<string, string>;
-    return fetch(input, { ...init, headers });
-  }
-
-  // optional: refresh Simple JWT access token (returns true if refreshed)
-  async function refreshAccessIfNeeded(): Promise<boolean> {
-    const refresh = localStorage.getItem("refresh");
-    if (!refresh) return false;
-    try {
-      const res = await fetch(`${API_BASE}/api/token/refresh/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (data.access) {
-        localStorage.setItem("access", data.access);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error("refresh error", err);
-      return false;
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (loading) return;
-    setMessage("");
-    setLoading(true);
+    setError(null);
+    setMessage(null);
 
+    const cleaned = email.trim().toLowerCase();
+    if (!cleaned || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login/`, {
+      const res = await fetch(`${API_BASE}/password-reset/request/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-        // credentials: "include", // enable if you use session auth + CSRF cookies
+        body: JSON.stringify({ email: cleaned }),
       });
 
-      // log basic info for debugging (uncomment while debugging)
-      // console.log("Login HTTP", res.status, res.statusText);
-      // console.log("Content-Type:", res.headers.get("content-type"));
+      // try parse json (may be empty); ignore parse errors
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = {};
+      }
 
-      // safe JSON parsing only when content-type is JSON
-      const contentType = res.headers.get("content-type") || "";
-      let data: any = null;
-      if (contentType.includes("application/json")) {
+      if (res.ok) {
+        // store email so verify page can prefill (optional, helpful UX)
         try {
-          data = await res.json();
-        } catch (err) {
-          console.error("Failed to parse JSON response:", err);
-          // keep raw data null
+          sessionStorage.setItem("passwordResetEmail", cleaned);
+        } catch (_) {
+          // ignore if storage not available
         }
+
+        setMessage("If that email exists we sent a code. Check your inbox (and spam).");
+        // small delay so user sees the confirmation
+        setTimeout(() => {
+          router.push("/verify-code");
+        }, 700);
       } else {
-        // non-JSON response - useful for debugging server HTML errors
-        try {
-          const raw = await res.text();
-          console.warn("Non-JSON response body:", raw);
-        } catch (_) {}
+        // show API-provided error if available, otherwise generic
+        const msg = data.detail || (data.email && data.email.join?.(", ")) || "Unable to send code. Try again.";
+        setError(msg);
       }
-
-      if (!res.ok) {
-        // normalize server error -> user-friendly string
-        let errMsg: string = `Login failed (HTTP ${res.status})`;
-        if (data) {
-          // prefer common patterns: non_field_errors (array), detail (string), field errors
-          if (data.non_field_errors) {
-            errMsg = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(" ") : String(data.non_field_errors);
-          } else if (data.detail) {
-            errMsg = String(data.detail);
-          } else {
-            // try to build from field errors object
-            try {
-              const entries = Object.entries(data);
-              errMsg = entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`).join(" ");
-            } catch {
-              errMsg = JSON.stringify(data);
-            }
-          }
-        }
-        setMessage(`❌ ${errMsg}`);
-        setLoading(false);
-        return;
-      }
-
-      // on success — handle several common token shapes
-      // 1) DRF Token -> { token: "abc" }
-      // 2) Simple JWT -> { access: "...", refresh: "..." }
-      // 3) access-only -> { access: "..." }
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
-      } else if (data?.access && data?.refresh) {
-        localStorage.setItem("access", data.access);
-        localStorage.setItem("refresh", data.refresh);
-      } else if (data?.access) {
-        localStorage.setItem("access", data.access);
-      } else {
-        // if server returned something else (or nothing) show notice but still allow redirect if desired
-        setMessage("❗ Login succeeded but server did not return a recognizable token.");
-        // optionally return here to avoid redirect:
-        // setLoading(false);
-        // return;
-      }
-
-      // good UX: small delay to let storage settle and show success (optional)
-      router.push("/dashboard");
     } catch (err) {
-      console.error(err);
-      setMessage("❌ Unable to reach server. Check API URL or network.");
+      console.error("Forgot password request error:", err);
+      setError("Network error. Check your connection or server.");
     } finally {
       setLoading(false);
     }
@@ -218,80 +128,37 @@ export default function LoginPage() {
             {/* Left Section */}
             <div className="col-md-5 d-flex align-items-center justify-content-center left-pannel px-0 position-relative">
               <div className="text-center px-4">
-                <Image src="/assets/images/login-graphic.webp" alt="Login Illustration" width={400} height={300} />
+                <img src="/assets/images/forgot-password.png" alt="Login Illustration" width={400} height={300} />
               </div>
             </div>
 
             {/* Right Section */}
             <div className="col-md-4 d-flex align-items-center justify-content-center bg-white px-0 right-pannel">
-              <div className="welcome-banner-bar">
-                <h6 className="welcome-banner-txt text-white mb-2 fw-semibold text-end">Welcome back</h6>
-              </div>
-
               <div className="p-4 w-100 form-wrapper">
-                <h3 className="fw-bold text-purple mb-4">Login your Account</h3>
+                <h3 className="fw-bold text-purple mb-4">Forgot Password</h3>
 
-                {/* --- wired form (login API integrated) --- */}
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSendCode}>
                   <div className="mb-3">
-                    <label className="form-label text-muted" htmlFor="username">
-                      UserEmail
-                    </label>
-                    <input id="email" type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                  </div>
-
-                  <div className="mb-4">
-                    <label className="form-label text-muted" htmlFor="password">
-                      Password
-                    </label>
-                    <div className="position-relative">
-                      <input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        className="form-control rounded-0"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        autoComplete="current-password"
-                        aria-label="Password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((s) => !s)}
-                        className="btn btn-link position-absolute end-0 top-50 translate-middle-y me-3 p-0"
-                        style={{ textDecoration: "none" }}
-                        aria-pressed={showPassword}
-                      >
-                        {showPassword ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="text-center">
-                    <button
-                      className="btn g-btn mx-auto px-5"
-                      type="submit"
+                    <label className="form-label">Enter your Email</label>
+                    <input
+                      type="email"
+                      className="form-control"
+                      placeholder="Enter email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
                       disabled={loading}
-                      aria-busy={loading}
-                    >
-                      {loading ? "Logging in..." : "Login"}
+                    />
+                  </div>
+
+                  {error && <div className="alert alert-danger">{error}</div>}
+                  {message && <div className="alert alert-success">{message}</div>}
+
+                  <div className="text-center mt-5">
+                    <button type="submit" className="btn g-btn w-100" disabled={loading}>
+                      {loading ? "Sending..." : "Send Code"}
                     </button>
                   </div>
-
-                  <div className="mt-3 text-center no-account-wrapper">
-                    <small>
-                      Don’t have an account? <a href="/UserSignup" className="fw-bold">Sign Up</a>
-                    </small>
-                    <br />
-                    <a href="/forgot-password" className="text-purple small d-block mt-2">Forgot Password</a>
-                  </div>
-
-                  {/* message */}
-                  {message && (
-                    <div className="alert alert-info mt-3" role="alert" aria-live="polite">
-                      {message}
-                    </div>
-                  )}
                 </form>
               </div>
             </div>
@@ -434,6 +301,14 @@ export default function LoginPage() {
           .form-wrapper {
             padding-top: 40px;
           }
+        }
+
+        .right-pannel input {
+          border-right: 0px !important;
+          border-left: 0px !important;
+          border-bottom: 1px solid #827ddc !important;
+          border-top: 0 !important;
+          border-radius: 0px !important;
         }
       `}</style>
     </div>

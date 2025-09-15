@@ -7,6 +7,7 @@ interface Task {
   id: number;
   sequence_id: number;
   project_id: number;         // ← renamed
+    project_name?: string | null;
   assignee: number | null;
   title: string;
   due_date: string | null;
@@ -108,7 +109,7 @@ export default function MyTaskPage() {
             {tasks.map(task => (
               <tr key={task.id}>
                 <td style={{ padding: "0.5rem" }}>
-                  {projectNames[task.project_id] ?? `Project #${task.project_id}`}
+                   {task.project_name ?? (task.project_id ? `Project #${task.project_id}` : "—")}
                 </td>
                 <td style={{ padding: "0.5rem" }}>{task.sequence_id}</td>
                 <td style={{ padding: "0.5rem" }}>{task.title}</td>

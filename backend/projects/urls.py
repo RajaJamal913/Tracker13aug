@@ -15,6 +15,7 @@ from .views import (
     get_members,
 )
 
+
 urlpatterns = [
     path('createproject/', ProjectCreateView.as_view(), name='Createproject'),
     path('projects/', ProjectListView.as_view(), name='ListProjects'),
@@ -25,6 +26,7 @@ urlpatterns = [
     re_path(r'^invites/accept$', AcceptInvitationView.as_view(), name='invite-accept-no-slash'),
     path('teams/', TeamListCreateView.as_view(), name='team-list-create'),
     path('teams/<int:pk>/', TeamDetailView.as_view(), name='team-detail'),
+    
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

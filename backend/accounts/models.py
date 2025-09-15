@@ -1,6 +1,13 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+import uuid
+import random
+from datetime import timedelta
+from django.utils import timezone
+from django.db import models
+from django.conf import settings
+
 
 class User(AbstractUser):
     """
@@ -59,3 +66,36 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} Profile"
+
+class PasswordResetOTP(models.Model):
+    """
+    One-time OTP + token for password reset flow.
+    We store by email (because user might not exist), but your project uses unique email.
+    """
+    email = models.EmailField(db_index=True)
+    code = models.CharField(max_length=6)
+    reset_token = models.UUIDField(default=None, null=True, blank=True)  # created on verify
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["email", "code"]),
+            models.Index(fields=["reset_token"]),
+        ]
+
+    def __str__(self):
+        return f"OTP {self.email} / {self.code}"
+
+    @classmethod
+    def generate_code(cls, email, *, ttl_minutes=10):
+        """Create a new OTP record and return it (old OTPS not deleted)."""
+        code = f"{random.randint(0, 999999):06d}"
+        now = timezone.now()
+        expires = now + timedelta(minutes=ttl_minutes)
+        otp = cls.objects.create(email=email.lower(), code=code, expires_at=expires)
+        return otp
+
+    def is_valid(self):
+        return (not self.used) and (timezone.now() <= self.expires_at)

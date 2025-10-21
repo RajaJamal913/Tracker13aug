@@ -7,18 +7,19 @@ from .models import Project, Member, Invitation, Team
 
 User = get_user_model()
 
-
 class MemberSimpleSerializer(serializers.ModelSerializer):
     """
     Small serializer shaped for the frontend MultiSelect:
-    { id, name, email }
+    { id, name, email, experience }
+    (unchanged — keep the small payload the frontend expects)
     """
     name = serializers.SerializerMethodField()
     email = serializers.EmailField(source="user.email", read_only=True)
+    experience = serializers.IntegerField(read_only=True, source="experience")
 
     class Meta:
         model = Member
-        fields = ("id", "name", "email")
+        fields = ("id", "name", "email", "experience")
 
     def get_name(self, obj):
         user = getattr(obj, "user", None)
@@ -34,13 +35,51 @@ class MemberSimpleSerializer(serializers.ModelSerializer):
 
 
 class MemberSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Member objects. Note: `user` is writeable by PK but in
+    most flows you'd want the endpoint to use request.user instead of passing user id.
+    """
     user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
     username = serializers.CharField(source="user.username", read_only=True)
 
+    # expose new fields
+    experience = serializers.IntegerField(required=False, allow_null=True)
+    skills = serializers.CharField(required=False, allow_blank=True)
+    developer_type = serializers.ChoiceField(
+        choices=Member.DEVELOPER_TYPE_CHOICES,
+        required=False,
+        allow_null=True
+    )
+    updated_at = serializers.DateTimeField(read_only=True)
+
     class Meta:
         model = Member
-        fields = ("id", "user", "role", "username")
+        fields = ("id", "user", "role", "username", "experience", "skills", "developer_type", "updated_at")
+        read_only_fields = ("id", "username", "updated_at")
 
+
+class MemberUpdateSerializer(serializers.Serializer):
+    """
+    Minimal serializer used to accept the frontend role/experience/skills payload.
+    Example payload:
+      { "role": "member", "experience": 3, "skills": "React, Django", "developer_type": "web" }
+    """
+    role = serializers.CharField(max_length=255, required=True)
+    experience = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    skills = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    developer_type = serializers.ChoiceField(
+        choices=Member.DEVELOPER_TYPE_CHOICES,
+        required=False,
+        allow_null=True
+    )
+
+    def validate_role(self, value):
+        # optional normalization (keep as provided)
+        return value.strip() if isinstance(value, str) else value
+
+    def validate_developer_type(self, value):
+        # normalize/strip if it's a string; ChoiceField already validates allowed values
+        return value.strip() if isinstance(value, str) else value
 
 class ProjectSerializer(serializers.ModelSerializer):
     created_by = serializers.ReadOnlyField(source="created_by.username")
@@ -207,14 +246,6 @@ class InvitationSerializer(serializers.ModelSerializer):
         if request and hasattr(request, "user") and not request.user.is_anonymous:
             validated_data["created_by"] = request.user
 
-        # Note: Project creation is handled in the view (InvitationListCreateView.perform_create)
-        # If you want the serializer to create the Project itself when create_flag is True,
-        # uncomment the block below — but keep in mind it would happen outside the view transaction.
-        #
-        # if create_flag and not validated_data.get("project"):
-        #     project = Project.objects.create(name=str(project_name).strip(), created_by=request.user)
-        #     validated_data["project"] = project
-
         return super().create(validated_data)
 
     def to_representation(self, instance):
@@ -225,6 +256,8 @@ class InvitationSerializer(serializers.ModelSerializer):
         except Exception:
             ret["project_name"] = None
         return ret
+
+
 class TeamSerializer(serializers.ModelSerializer):
     members = MemberSimpleSerializer(many=True, read_only=True)
     member_ids = serializers.PrimaryKeyRelatedField(

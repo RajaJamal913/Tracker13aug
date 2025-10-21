@@ -57,12 +57,15 @@ class TimeRequest(models.Model):
         return f"{self.user} → {self.project.name} ({self.status})"
 
 
+# models.py
+# models.py
+# timesheet/models.py
+from django.conf import settings
+from django.db import models
+from task_api.models import TaskAI  # <-- import the model directly
+
 class Notification(models.Model):
-    """
-    A simple notification for project owners when
-    a new TimeRequest is created.
-    """
-    recipient   = models.ForeignKey(
+    recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='notifications'
@@ -70,14 +73,20 @@ class Notification(models.Model):
     time_request = models.ForeignKey(
         TimeRequest,
         on_delete=models.CASCADE,
-        related_name='notifications'
+        related_name='notifications',
+        null=True,
+        blank=True
     )
-    verb        = models.CharField(
-        max_length=255,
-        help_text='What happened (e.g. "requested extra time")'
+    task = models.ForeignKey(
+        TaskAI,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        null=True,
+        blank=True  # so notifications not related to tasks (e.g., TimeRequest) are allowed
     )
-    created_at  = models.DateTimeField(auto_now_add=True)
-    is_read     = models.BooleanField(default=False)
+    verb = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
 
     def __str__(self):
         return f"[{'✔' if self.is_read else '•'}] {self.recipient}: {self.verb}"

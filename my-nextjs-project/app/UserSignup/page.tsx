@@ -8,6 +8,8 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import { useRouter } from "next/navigation";
 import BootstrapClient from "@/components/BootstrapClient";
 
+type ErrorsMap = Record<string, string[]>;
+
 export default function LoginPage() {
   useEffect(() => {
     // import("bootstrap/dist/js/bootstrap.bundle.min.js");
@@ -25,18 +27,74 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<ErrorsMap>({});
+
+  const clearFieldError = (field: string) => {
+    setErrors((prev) => {
+      if (!prev || !prev[field]) return prev;
+      const copy = { ...prev };
+      delete copy[field];
+      return copy;
+    });
+  };
+
+  const focusFirstError = (errs: ErrorsMap) => {
+    const keys = Object.keys(errs);
+    if (keys.length === 0) return;
+    const first = keys[0];
+    const el = document.getElementById(first);
+    if (el) (el as HTMLElement).focus();
+  };
+
+  // Normalize common DRF error formats into a map of field -> array of messages
+  const normalizeErrors = (data: any): ErrorsMap => {
+    const out: ErrorsMap = {};
+    if (!data) return out;
+
+    // If data is string, attach to non_field_errors
+    if (typeof data === "string") {
+      out.non_field_errors = [data];
+      return out;
+    }
+
+    // If API returned something like { detail: '...' }
+    if (data.detail) {
+      out.non_field_errors = Array.isArray(data.detail) ? data.detail : [String(data.detail)];
+    }
+
+    // If it's an object with field keys
+    if (typeof data === "object") {
+      for (const [k, v] of Object.entries(data)) {
+        // skip detail since we handled above
+        if (k === "detail") continue;
+        if (Array.isArray(v)) {
+          out[k] = v.map((x) => String(x));
+        } else if (typeof v === "object" && v !== null) {
+          // nested object, flatten a bit
+          out[k] = [JSON.stringify(v)];
+        } else {
+          out[k] = [String(v)];
+        }
+      }
+    }
+
+    return out;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     setMessage("");
+    setErrors({});
 
     // Basic client-side validation
     if (!firstName.trim() || !email.trim() || !password) {
       setMessage("❌ Please fill all required fields.");
+      if (!firstName.trim()) setErrors({ first_name: ["First name is required."] });
       return;
     }
     if (password !== confirmPassword) {
+      setErrors({ password: ["Passwords do not match."] });
       setMessage("❌ Passwords do not match.");
       return;
     }
@@ -64,7 +122,6 @@ export default function LoginPage() {
           password,
           password2: confirmPassword, // include if backend expects it
         }),
-        // If backend returns HttpOnly cookie set, use credentials: "include" and configure backend.
         // credentials: "include",
       });
 
@@ -76,10 +133,28 @@ export default function LoginPage() {
       }
 
       if (!res.ok) {
-        const errMsg =
-          (data && (data.non_field_errors || data.detail || data.errors)) ||
-          "Registration failed. Please check your input.";
-        setMessage(`❌ ${Array.isArray(errMsg) ? errMsg.join(" ") : errMsg}`);
+        // Normalize and display field-specific errors as well as non-field ones
+        const normalized = normalizeErrors(data);
+        setErrors(normalized);
+
+        // Compose a helpful user-facing message
+        if (normalized.non_field_errors && normalized.non_field_errors.length) {
+          setMessage(`❌ ${normalized.non_field_errors.join(" ")}`);
+        } else {
+          // If there are field errors, show the first one inline and a short summary
+          const firstField = Object.keys(normalized)[0];
+          if (firstField) {
+            const firstMsgs = normalized[firstField];
+            setMessage(`❌ ${firstMsgs.join(" ")}`);
+          } else {
+            // fallback generic message
+            setMessage("❌ Registration failed. Please check the form for errors.");
+          }
+        }
+
+        // focus the first input with an error
+        focusFirstError(normalized);
+
         setLoading(false);
         return;
       }
@@ -99,6 +174,19 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // helper to render field error(s)
+  const renderFieldError = (field: string) => {
+    const e = errors[field];
+    if (!e || e.length === 0) return null;
+    return (
+      <div className="invalid-feedback d-block">
+        {e.map((m, i) => (
+          <div key={i}>{m}</div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -193,46 +281,71 @@ export default function LoginPage() {
               <div className="p-4 w-100" style={{ maxWidth: "400px" }}>
                 <h3 className="fw-bold text-purple mb-4">Sign Up</h3>
 
-                <form onSubmit={handleSubmit}>
+                {/* Non-field errors or general message */}
+                {message && (
+                  <div className={`alert ${Object.keys(errors).length ? "alert-danger" : "alert-info"} mt-2`} role="alert">
+                    {message}
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} noValidate>
                   <div className="mb-3">
-                    <label className="form-label text-muted" htmlFor="firstName">
+                    <label className="form-label text-muted" htmlFor="first_name">
                       First Name
                     </label>
                     <input
-                      id="firstName"
+                      id="first_name"
+                      name="first_name"
                       type="text"
-                      className="form-control rounded-0"
+                      className={`form-control rounded-0 ${errors["first_name"] ? "is-invalid" : ""}`}
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
+                      onChange={(e) => {
+                        setFirstName(e.target.value);
+                        clearFieldError("first_name");
+                      }}
                       required
                     />
+                    {renderFieldError("first_name")}
                   </div>
+
                   <div className="mb-3">
-                    <label className="form-label text-muted" htmlFor="lastName">
+                    <label className="form-label text-muted" htmlFor="last_name">
                       Last Name
                     </label>
                     <input
-                      id="lastName"
+                      id="last_name"
+                      name="last_name"
                       type="text"
-                      className="form-control rounded-0"
+                      className={`form-control rounded-0 ${errors["last_name"] ? "is-invalid" : ""}`}
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      onChange={(e) => {
+                        setLastName(e.target.value);
+                        clearFieldError("last_name");
+                      }}
                       required
                     />
+                    {renderFieldError("last_name")}
                   </div>
+
                   <div className="mb-3">
                     <label className="form-label text-muted" htmlFor="email">
                       Email
                     </label>
                     <input
                       id="email"
+                      name="email"
                       type="email"
-                      className="form-control rounded-0"
+                      className={`form-control rounded-0 ${errors["email"] ? "is-invalid" : ""}`}
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        clearFieldError("email");
+                      }}
                       required
                     />
+                    {renderFieldError("email")}
                   </div>
+
                   <div className="mb-4">
                     <label className="form-label text-muted" htmlFor="password">
                       Password
@@ -240,10 +353,14 @@ export default function LoginPage() {
                     <div className="position-relative">
                       <input
                         id="password"
+                        name="password"
                         type={showPassword ? "text" : "password"}
-                        className="form-control rounded-0"
+                        className={`form-control rounded-0 ${errors["password"] ? "is-invalid" : ""}`}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          clearFieldError("password");
+                        }}
                         required
                       />
                       <button
@@ -256,20 +373,28 @@ export default function LoginPage() {
                         {showPassword ? "Hide" : "Show"}
                       </button>
                     </div>
+                    {renderFieldError("password")}
                   </div>
+
                   <div className="mb-4">
-                    <label className="form-label text-muted" htmlFor="confirmPassword">
+                    <label className="form-label text-muted" htmlFor="password2">
                       Confirm Password
                     </label>
                     <input
-                      id="confirmPassword"
+                      id="password2"
+                      name="password2"
                       type="password"
-                      className="form-control rounded-0"
+                      className={`form-control rounded-0 ${errors["password2"] ? "is-invalid" : ""}`}
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        clearFieldError("password2");
+                      }}
                       required
                     />
+                    {renderFieldError("password2")}
                   </div>
+
                   <div className="text-center">
                     <button className="btn g-btn mx-auto px-5" type="submit" disabled={loading}>
                       {loading ? "Signing up..." : "Sign Up"}
@@ -283,13 +408,6 @@ export default function LoginPage() {
                     <br />
                     <a href="#" className="text-purple small d-block mt-2">Forgot Password</a>
                   </div>
-
-                  {/* message */}
-                  {message && (
-                    <div className="alert alert-info mt-3" role="alert">
-                      {message}
-                    </div>
-                  )}
                 </form>
               </div>
             </div>
@@ -331,7 +449,7 @@ export default function LoginPage() {
               </a>
               <a href="#" className="text-white me-2">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.00076 1.44721C8.80947 1.44721 9.02366 1.45398 9.73818 1.48656C10.1678 1.49182 10.5933 1.5707 10.9962 1.71979C11.2884 1.83248 11.5538 2.00511 11.7753 2.22656C11.9967 2.44802 12.1694 2.71339 12.282 3.00559C12.4311 3.40853 12.51 3.83406 12.5153 4.26366C12.5475 4.97817 12.5546 5.19237 12.5546 7.00108C12.5546 8.80979 12.5479 9.02398 12.5153 9.7385C12.51 10.1681 12.4311 10.5936 12.282 10.9966C12.1694 11.2888 11.9967 11.5541 11.7753 11.7756C11.5538 11.997 11.2884 12.1697 10.9962 12.2824C10.5933 12.4315 10.1678 12.5103 9.73818 12.5156C9.02398 12.5479 8.80979 12.5549 7.00076 12.5549C5.19172 12.5549 4.97753 12.5482 4.26334 12.5156C3.83373 12.5103 3.40821 12.4315 3.00527 12.2824C2.71307 12.1697 2.44769 11.997 2.22624 11.7756C2.00479 11.5541 1.83216 11.2888 1.71947 10.9966C1.57038 10.5936 1.4915 10.1681 1.48624 9.7385C1.45398 9.02398 1.44689 8.80979 1.44689 7.00108C1.44689 5.19237 1.45366 4.97817 1.48624 4.26366C1.4915 3.83406 1.57038 3.40853 1.71947 3.00559C1.83216 2.71339 2.00479 2.44802 2.22624 2.22656C2.44769 2.00511 2.71307 1.83248 3.00527 1.71979C3.40821 1.5707 3.83373 1.49182 4.26334 1.48656C4.97785 1.4543 5.19205 1.44721 7.00076 1.44721ZM7.00076 0.226562C5.16205 0.226562 4.93043 0.234304 4.20785 0.267208C3.64561 0.278391 3.08934 0.384847 2.56269 0.582046C2.11092 0.752261 1.70172 1.019 1.36366 1.36366C1.01869 1.70184 0.751722 2.11127 0.581401 2.56334C0.384201 3.08998 0.277746 3.64625 0.266563 4.2085C0.234304 4.93043 0.226562 5.16205 0.226562 7.00076C0.226562 8.83946 0.234304 9.07108 0.267208 9.79366C0.278391 10.3559 0.384847 10.9122 0.582046 11.4388C0.752178 11.8908 1.01892 12.3002 1.36366 12.6385C1.70191 12.9832 2.11133 13.25 2.56334 13.4201C3.08998 13.6173 3.64626 13.7238 4.2085 13.7349C4.93108 13.7672 5.16172 13.7756 7.0014 13.7756C8.84108 13.7756 9.07172 13.7679 9.7943 13.7349C10.3565 13.7238 10.9128 13.6173 11.4395 13.4201C11.8893 13.2457 12.2978 12.9794 12.6389 12.6381C12.98 12.2968 13.246 11.8882 13.4201 11.4382C13.6173 10.9115 13.7238 10.3553 13.735 9.79301C13.7672 9.07108 13.775 8.83946 13.775 7.00076C13.775 5.16205 13.7672 4.93043 13.7343 4.20785C13.7231 3.64561 13.6167 3.08934 13.4195 2.56269C13.2493 2.11068 12.9826 1.70126 12.6379 1.36301C12.2996 1.01828 11.8902 0.751533 11.4382 0.581401C10.9115 0.384201 10.3553 0.277746 9.79301 0.266563C9.07108 0.234304 8.83947 0.226562 7.00076 0.226562Z" fill="white" />
+                  <path d="M7.00076 1.44721C8.80947 1.44721 9.02366 1.45398 9.73818 1.48656C10.1678 1.49182 10.5933 1.5707 10.9962 1.71979C11.2884 1.83248 11.5538 2.00511 11.7753 2.22656C11.9967 2.44802 12.1694 2.71339 12.282 3.00559C12.4311 3.40853 12.51 3.83406 12.5153 4.26366C12.5475 4.97817 12.5546 5.19237 12.5546 7.00108C12.5546 8.80979 12.5479 9.02398 12.5153 9.7385C12.51 10.1681 12.4311 10.5936 12.282 10.9966C12.1694 11.2888 11.9967 11.5541 11.7753 11.7756C11.5538 11.997 11.2884 12.1697 10.9962 12.2824C10.5933 12.4315 10.1678 12.5103 9.73818 12.5156C9.02398 12.5479 8.80979 12.5549 7.00076 12.5549C5.19172 12.5549 4.97753 12.5482 4.26334 12.5156C3.83373 12.5103 3.40821 12.4315 3.00527 12.2824C2.71307 12.1697 2.44769 11.997 2.22624 11.7756C2.00479 11.5541 1.83216 11.2888 1.71947 10.9966C1.57038 10.5936 1.4915 10.1681 1.48624 9.7385C1.45398 9.02398 1.44689 8.80979 1.44689 7.00108C1.44689 5.19237 1.45366 4.97817 1.48624 4.26366C1.4915 3.83406 1.57038 3.40853 1.71947 3.00559C1.83216 2.71339 2.00479 2.44802 2.22624 2.22656C2.44769 2.00511 2.71307 1.83248 3.00527 1.71979C3.40821 1.5707 3.83373 1.49182 4.26334 1.48656C4.97785 1.4543 5.19205 1.44721 7.00076 1.44721ZM7.00076 0.226562C5.16205 0.226562 4.93043 0.234304 4.20785 0.267208C3.64561 0.278391 3.08934 0.384847 2.56269 0.582046C2.11092 0.752261 1.70172 1.019 1.36366 1.36366C1.01869 1.70184 0.751722 2.11127 0.581401 2.56334C0.384201 3.08998 0.277746 3.64625 0.266563 4.2085C0.234304 4.93043 0.226562 5.16205 0.226562 7.00076C0.226562 8.83946 0.234304 9.07108 0.267208 9.79366C0.278391 10.3559 0.384847 10.9122 0.582046 11.4388C0.752178 11.8908 1.01892 12.3002 1.36366 12.6385C1.70191 12.9832 2.11133 13.25 2.56334 13.4201C3.08998 13.6173 3.64626 13.7238 4.2085 13.7349C4.93108 13.7672 5.16172 13.7756 7.0014 13.7756C8.84108 13.7756 9.07172 13.7679 9.7943 13.7349C10.3565 13.7238 10.9128 13.6173 11.4395 13.4201C11.8893 13.2457 12.2978 12.9794 12.6389 12.6381C12.98 12.2968 13.246 11.8882 13.4201 11.4382C13.6173 10.9115 13.7238 10.3553 13.735 9.79301C13.7672 9.07108 13.775 8.83946 13.775 7.00076C13.775 5.16205 13.7672 4.93043 13.7343 4.20785C13.7231 3.64561 13.6167 3.08934 13.4195 2.56269C13.2493 2.11068 12.9826 1.70126 12.6379 1.36301C12.2996 1.01828 11.8902 0.751533 11.4382 0.581401C10.9115 0.384201 10.3553 0.277746 9.79301 0.266563C9.07108 0.234304 8.83947 0.226562 7.00076 0.226562C5.16205 0.226562 4.93043 0.234304 4.20785 0.267208C3.64561 0.278391 3.08934 0.384847 2.56269 0.582046C2.11092 0.752261 1.70172 1.019 1.36366 1.36366C1.01869 1.70184 0.751722 2.11127 0.581401 2.56334C0.384201 3.08998 0.277746 3.64625 0.266563 4.2085C0.234304 4.93043 0.226562 5.16205 0.226562 7.00076C0.226562 8.83946 0.234304 9.07108 0.267208 9.79366C0.278391 10.3559 0.384847 10.9122 0.582046 11.4388C0.752178 11.8908 1.01892 12.3002 1.36366 12.6385C1.70191 12.9832 2.11133 13.25 2.56334 13.4201C3.08998 13.6173 3.64626 13.7238 4.2085 13.7349C4.93108 13.7672 5.16172 13.7756 7.0014 13.7756C8.84108 13.7756 9.07172 13.7679 9.7943 13.7349C10.3565 13.7238 10.9128 13.6173 11.4395 13.4201C11.8893 13.2457 12.2978 12.9794 12.6389 12.6381C12.98 12.2968 13.246 11.8882 13.4201 11.4382C13.6173 10.9115 13.7238 10.3553 13.735 9.79301C13.7672 9.07108 13.775 8.83946 13.775 7.00076C13.775 5.16205 13.7672 4.93043 13.7343 4.20785C13.7231 3.64561 13.6167 3.08934 13.4195 2.56269C13.2493 2.11068 12.9826 1.70126 12.6379 1.36301C12.2996 1.01828 11.8902 0.751533 11.4382 0.581401C10.9115 0.384201 10.3553 0.277746 9.79301 0.266563C9.07108 0.234304 8.83947 0.226562 7.00076 0.226562Z" fill="white" />
                 </svg>
               </a>
             </div>

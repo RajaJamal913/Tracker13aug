@@ -49,10 +49,13 @@ class TimeRequestSerializer(serializers.ModelSerializer):
         validated_data["user"] = self.context["request"].user
         return super().create(validated_data)
 
+# serializers.py
+# serializers.py
 class NotificationSerializer(serializers.ModelSerializer):
     time_request_id = serializers.IntegerField(source="time_request.id", read_only=True)
+    task_id = serializers.IntegerField(source="task.id", read_only=True)
 
     class Meta:
         model = Notification
-        fields = ["id", "time_request_id", "verb", "created_at", "is_read"]
-        read_only_fields = ["id", "time_request_id", "verb", "created_at"]
+        fields = ["id", "time_request_id", "task_id", "verb", "created_at", "is_read"]
+        read_only_fields = ["id", "time_request_id", "task_id", "verb", "created_at"]

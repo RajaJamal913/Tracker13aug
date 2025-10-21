@@ -14,7 +14,13 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 
 from .models import Project, Member, Invitation, Team
-from .serializers import ProjectSerializer, MemberSerializer, InvitationSerializer, TeamSerializer
+from .serializers import (
+    ProjectSerializer,
+    MemberSerializer,
+    InvitationSerializer,
+    TeamSerializer,
+    MemberUpdateSerializer,
+)
 
 logger = logging.getLogger(__name__)
 User = None
@@ -97,8 +103,7 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
 def get_members(request):
     """
     Return only Members that were added to projects via accepted invitations.
-    This tries several common Invitation fields: accepted_at / accepted_on / is_accepted / accepted / accepted_by
-    If none exist or no accepted invitations are found, returns an empty list.
+    Tries several common Invitation fields for accepted state.
     """
     accepted_qs = Invitation.objects.none()
     try:
@@ -170,17 +175,6 @@ class InvitationListCreateView(generics.ListCreateAPIView):
     """
     GET /api/invites/ -> list invites relevant to the current user (created_by or for projects they belong to)
     POST /api/invites/ -> create invite (created_by is set to request.user)
-
-    Supports special payload:
-      { "email": "...", "role": "...", "create_project": true, "project_name": "New Project" }
-    When create_project is true, a Project will be created and the invitation will be attached to it.
-    The creation is performed in a transaction so either both project+invite are created or none.
-
-    New behavior: if the invited email already belongs to an existing user, we will:
-      - create/get a Member for that user,
-      - attach the Member to the invite.project (if present),
-      - mark the invitation accepted (set accepted/accepted_at/accepted_by if those fields exist),
-      - save the invitation (or call mark_accepted() if model provides it).
     """
     serializer_class = InvitationSerializer
     permission_classes = [IsAuthenticated]
@@ -501,3 +495,90 @@ class TeamDetailView(generics.RetrieveUpdateDestroyAPIView):
         if not user or user.is_anonymous:
             return Team.objects.none()
         return Team.objects.filter(Q(created_by=user) | Q(members__user=user)).distinct()
+
+
+# -----------------------
+# New: Endpoint to persist the role/experience/skills from frontend
+# -----------------------
+class UserRoleUpdateView(APIView):
+    """
+    POST /api/user/role/
+    Body example:
+      { "role": "member", "experience": 3, "skills": "React, Django", "developer_type": "web" }
+
+    Creates or updates the Member object for the authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+    # keep your existing auth classes (if JWTAuthentication may be undefined in some environments,
+    # keep the expression you were using earlier — adjust if necessary).
+    authentication_classes = [TokenAuthentication, SessionAuthentication] + ([JWTAuthentication] if JWTAuthentication else [])
+
+    def post(self, request):
+        serializer = MemberUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        user = request.user
+
+        try:
+            with transaction.atomic():
+                member_obj, _ = Member.objects.get_or_create(user=user)
+
+                # role (required by serializer)
+                member_obj.role = data.get("role", member_obj.role)
+
+                # experience — update only if present in payload
+                if "experience" in data:
+                    member_obj.experience = data.get("experience")
+
+                # skills — update only if present in payload
+                if "skills" in data:
+                    member_obj.skills = (data.get("skills") or "").strip()
+
+                # developer_type — update only if present in payload
+                if "developer_type" in data:
+                    dev = data.get("developer_type")
+                    # normalize empty string to None so DB stores NULL
+                    if isinstance(dev, str):
+                        dev = dev.strip() or None
+                    member_obj.developer_type = dev
+
+                member_obj.save()
+
+            return Response(MemberSerializer(member_obj).data, status=status.HTTP_200_OK)
+
+        except Exception as exc:
+            logger.exception("Failed to update member for user=%s: %s", getattr(user, "pk", None), exc)
+            return Response({"detail": "server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -----------------------
+# New: whoami endpoint (returns user info + optional member_profile)
+# -----------------------
+class WhoAmIView(APIView):
+    """
+    GET /api/auth/whoami/
+    Returns basic user info and member_profile if present.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication, SessionAuthentication] + ([JWTAuthentication] if JWTAuthentication else [])
+
+    def get(self, request):
+        user = request.user
+        data = {
+            "username": getattr(user, "username", None),
+            "email": getattr(user, "email", None),
+            "first_name": getattr(user, "first_name", None),
+            "last_name": getattr(user, "last_name", None),
+            "last_login": getattr(user, "last_login", None),
+        }
+        # include member_profile if one exists
+        try:
+            member_profile = getattr(user, "member_profile", None)
+            if member_profile:
+                data["member_profile"] = MemberSerializer(member_profile).data
+        except Exception:
+            # be defensive: if serialization fails, don't blow up the whole response
+            logger.exception("Failed to serialize member_profile for user=%s", getattr(user, "pk", None))
+
+        return Response(data, status=status.HTTP_200_OK)

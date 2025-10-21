@@ -14,4 +14,5 @@ urlpatterns = [
        path("api/", include("shifts.urls")),
          path('api/', include('tracker.urls')),
            path('api/', include('reports.urls')),
+           path("api/", include("task_api.urls")),
 ]

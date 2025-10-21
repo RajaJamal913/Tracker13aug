@@ -57,13 +57,14 @@ class TimeRequestViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data)
 
+# views.py
+from rest_framework import viewsets, permissions
+from .models import Notification
+from .serializers import NotificationSerializer
+
 class NotificationViewSet(viewsets.ModelViewSet):
-    """
-    Users can list and mark their notifications as read.
-    """
-    queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(recipient=self.request.user)
+        return Notification.objects.filter(recipient=self.request.user).order_by('-created_at')

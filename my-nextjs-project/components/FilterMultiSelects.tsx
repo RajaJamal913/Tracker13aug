@@ -15,7 +15,7 @@ export default function FilterMultiSelects() {
   const [selectedMembers, setSelectedMembers] = useState<Option[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<Option[]>([]);
   const [selectedTeams, setSelectedTeams] = useState<Option[]>([]);
-  const [selectedTitles, setSelectedTitles] = useState<Option[]>([]);
+ 
   // build change 
 //  const [selectedDate, setSelectedDate] = useState(null);
 const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -79,19 +79,7 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
         className="filter-dropdown"
       />
 
-      <MultiSelect
-        value={selectedTitles}
-        options={titles}
-        onChange={(e) => setSelectedTitles(e.value)}
-        optionLabel="name"
-        placeholder="Titles"
-        // build change 
-        // display="checkbox"
-         display="chip" 
-        filter
-        className="filter-dropdown"
-        
-      />
+     
  <DatePicker 
 
         selected={selectedDate}

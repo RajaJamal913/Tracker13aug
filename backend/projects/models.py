@@ -7,7 +7,22 @@ from django.core.mail import send_mail
 import logging
 
 logger = logging.getLogger(__name__)
+from django.conf import settings
+from django.db import models
+
 class Member(models.Model):
+    DEVELOPER_TYPE_WEB = "web"
+    DEVELOPER_TYPE_MOBILE = "mobile"
+    DEVELOPER_TYPE_UIUX = "uiux"
+    DEVELOPER_TYPE_OTHER = "other"
+
+    DEVELOPER_TYPE_CHOICES = [
+        (DEVELOPER_TYPE_WEB, "Web Developer"),
+        (DEVELOPER_TYPE_MOBILE, "Mobile Developer"),
+        (DEVELOPER_TYPE_UIUX, "UI/UX Designer"),
+        (DEVELOPER_TYPE_OTHER, "Other"),
+    ]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -15,9 +30,34 @@ class Member(models.Model):
     )
     role = models.CharField(max_length=255, blank=True)
 
+    # NEW fields
+    experience = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Years of experience (integer)."
+    )
+    skills = models.TextField(
+        blank=True,
+        default="",
+        help_text="Comma separated list or free-form skills text."
+    )
+
+    developer_type = models.CharField(
+        max_length=10,
+        choices=DEVELOPER_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Type of developer: web, mobile, or UI/UX designer."
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
     def __str__(self):
-        if self.user_id and hasattr(self.user, 'username'):
-            return f"{self.user.username} ({self.role or 'Member'})"
+        username = getattr(self.user, 'username', None)
+        dev = dict(self.DEVELOPER_TYPE_CHOICES).get(self.developer_type, None)
+        if username:
+            extra = f" — {dev}" if dev else ""
+            return f"{username} ({self.role or 'Member'}){extra}"
         return f"Member #{self.pk}"
     
 class Project(models.Model):

@@ -195,7 +195,7 @@ DEFAULT_FROM_EMAIL = "no-reply@yourdomain.com"
 # settings.py
 # settings.py
 # Add your server-side OpenAI key and preferred model
-OPENAI_API_KEY ="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"
+OPENAI_API_KEY =""
 OPENAI_MODEL = "gpt-4o-mini"     # change to model you have access to
 OPENAI_MAX_CANDIDATES = 100      # limit number of candidates sent to the model
 OPENAI_MAX_TOKENS = 800

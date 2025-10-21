@@ -195,3 +195,4 @@ DEFAULT_FROM_EMAIL = "no-reply@yourdomain.com"
 # settings.py
 # settings.py
 # Add your server-side OpenAI key and preferred model
+

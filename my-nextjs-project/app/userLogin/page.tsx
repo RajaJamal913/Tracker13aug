@@ -7,6 +7,15 @@ import Image from "next/image";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { useRouter } from "next/navigation";
 
+/**
+ * Updated LoginPage with two-factor support.
+ * - Calls /api/twofactor/login-2fa/
+ * - If response indicates need_2fa, shows modal to collect 6-digit code and retries.
+ * - Stores token shapes in localStorage like your original code.
+ *
+ * Ensure NEXT_PUBLIC_API_BASE is set or defaults to http://127.0.0.1:8000
+ */
+
 export default function LoginPage() {
   useEffect(() => {
     // If you need Bootstrap JS (dropdowns, modals), uncomment:
@@ -17,12 +26,17 @@ export default function LoginPage() {
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
   // --- Login state
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(""); // kept for compatibility
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(""); // visible message to user
   const [showPassword, setShowPassword] = useState(false);
+
+  // 2FA modal state
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [twoFACode, setTwoFACode] = useState("");
+  const [pendingCredentials, setPendingCredentials] = useState<{ email: string; password: string } | null>(null);
 
   // helper to read cookie (for CSRF/session auth)
   function getCookie(name: string) {
@@ -65,6 +79,61 @@ export default function LoginPage() {
     }
   }
 
+  // perform a login attempt against the twofactor login endpoint (server may require code)
+  async function attemptLogin(payload: { email: string; password: string; code?: string | null }) {
+    const res = await fetch(`${API_BASE}/api/twofactor/login-2fa/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const contentType = res.headers.get("content-type") || "";
+    let data: any = null;
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        console.error("Failed to parse JSON response:", err);
+      }
+    } else {
+      try {
+        const raw = await res.text();
+        console.warn("Non-JSON response body:", raw);
+      } catch {}
+    }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // Extract helpful error text from JSON shapes
+  function extractErrorMessage(data: any) {
+    if (!data) return null;
+    if (typeof data === "string") return data;
+    if (data.detail) return data.detail;
+    if (data.non_field_errors) return Array.isArray(data.non_field_errors) ? data.non_field_errors.join(" ") : String(data.non_field_errors);
+    try {
+      const entries = Object.entries(data);
+      return entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`).join(" ");
+    } catch {
+      return null;
+    }
+  }
+
+  // persist token shapes to localStorage (keeps your previous logic)
+  function persistTokensFromResponse(data: any) {
+    if (!data) return;
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+    }
+    if (data.access) {
+      localStorage.setItem("access", data.access);
+    }
+    if (data.refresh) {
+      localStorage.setItem("refresh", data.refresh);
+    }
+    localStorage.setItem("isLoggedIn", "1");
+  }
+
+  // primary form submit: first call without code
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -72,82 +141,64 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-        // credentials: "include", // enable if you use session auth + CSRF cookies
-      });
+      const result = await attemptLogin({ email, password });
 
-      // log basic info for debugging (uncomment while debugging)
-      // console.log("Login HTTP", res.status, res.statusText);
-      // console.log("Content-Type:", res.headers.get("content-type"));
-
-      // safe JSON parsing only when content-type is JSON
-      const contentType = res.headers.get("content-type") || "";
-      let data: any = null;
-      if (contentType.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch (err) {
-          console.error("Failed to parse JSON response:", err);
-          // keep raw data null
-        }
-      } else {
-        // non-JSON response - useful for debugging server HTML errors
-        try {
-          const raw = await res.text();
-          console.warn("Non-JSON response body:", raw);
-        } catch (_) {}
+      if (result.ok) {
+        // success — persist tokens and redirect
+        persistTokensFromResponse(result.data);
+        router.push("/dashboard");
+        return;
       }
 
-      if (!res.ok) {
-        // normalize server error -> user-friendly string
-        let errMsg: string = `Login failed (HTTP ${res.status})`;
-        if (data) {
-          // prefer common patterns: non_field_errors (array), detail (string), field errors
-          if (data.non_field_errors) {
-            errMsg = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(" ") : String(data.non_field_errors);
-          } else if (data.detail) {
-            errMsg = String(data.detail);
-          } else {
-            // try to build from field errors object
-            try {
-              const entries = Object.entries(data);
-              errMsg = entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`).join(" ");
-            } catch {
-              errMsg = JSON.stringify(data);
-            }
-          }
-        }
-        setMessage(`❌ ${errMsg}`);
+      // if server says 2FA is required, prompt for code
+      if (result.data?.need_2fa) {
+        setPendingCredentials({ email, password });
+        setTwoFACode("");
+        setShow2FAModal(true);
+        setMessage("Two-Factor Authentication required — enter the 6-digit code from your authenticator.");
         setLoading(false);
         return;
       }
 
-      // on success — handle several common token shapes
-      // 1) DRF Token -> { token: "abc" }
-      // 2) Simple JWT -> { access: "...", refresh: "..." }
-      // 3) access-only -> { access: "..." }
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
-      } else if (data?.access && data?.refresh) {
-        localStorage.setItem("access", data.access);
-        localStorage.setItem("refresh", data.refresh);
-      } else if (data?.access) {
-        localStorage.setItem("access", data.access);
-      } else {
-        // if server returned something else (or nothing) show notice but still allow redirect if desired
-        setMessage("❗ Login succeeded but server did not return a recognizable token.");
-        // optionally return here to avoid redirect:
-        // setLoading(false);
-        // return;
-      }
-
-      // good UX: small delay to let storage settle and show success (optional)
-      router.push("/dashboard");
+      // otherwise display error
+      const errMsg = extractErrorMessage(result.data) || `Login failed (HTTP ${result.status})`;
+      setMessage(`❌ ${errMsg}`);
     } catch (err) {
       console.error(err);
+      setMessage("❌ Unable to reach server. Check API URL or network.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // second step: submit code
+  const handle2FASubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    setMessage("");
+
+    if (!pendingCredentials) {
+      setMessage("Missing pending credentials — please try logging in again.");
+      setShow2FAModal(false);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await attemptLogin({ email: pendingCredentials.email, password: pendingCredentials.password, code: twoFACode.trim() });
+
+      if (result.ok) {
+        persistTokensFromResponse(result.data);
+        setShow2FAModal(false);
+        router.push("/dashboard");
+        return;
+      }
+
+      const errMsg = extractErrorMessage(result.data) || `Invalid two-factor code (HTTP ${result.status})`;
+      setMessage(`❌ ${errMsg}`);
+    } catch (err) {
+      console.error("2FA error", err);
       setMessage("❌ Unable to reach server. Check API URL or network.");
     } finally {
       setLoading(false);
@@ -307,6 +358,40 @@ export default function LoginPage() {
         <img className="form-img form-watch" src="/assets/images/form-watch.png" alt="" />
       </section>
 
+      {/* 2FA Modal (Bootstrap-style markup; no external react-bootstrap required) */}
+      {show2FAModal && (
+        <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Two-Factor Authentication</h5>
+                <button type="button" className="btn-close" onClick={() => setShow2FAModal(false)} aria-label="Close"></button>
+              </div>
+              <form onSubmit={handle2FASubmit}>
+                <div className="modal-body">
+                  <p>Enter the 6-digit code from your authenticator app.</p>
+                  <input
+                    type="text"
+                    className="form-control"
+                    maxLength={6}
+                    value={twoFACode}
+                    onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, ""))}
+                    placeholder="123456"
+                    autoFocus
+                  />
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-light" onClick={() => setShow2FAModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? "Verifying..." : "Verify & Login"}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          {/* backdrop */}
+          <div className="modal-backdrop fade show"></div>
+        </div>
+      )}
+
       <footer className=" text-white py-4">
         <div className="container">
           <div className="row align-items-center mb-3 border-bottom pb-3">
@@ -435,6 +520,10 @@ export default function LoginPage() {
             padding-top: 40px;
           }
         }
+
+        /* modal z-index / backdrop */
+        .modal-backdrop { z-index: 1040; }
+        .modal { z-index: 1050; }
       `}</style>
     </div>
   );

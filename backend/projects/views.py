@@ -97,67 +97,67 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
             return Project.objects.none()
         return Project.objects.filter(Q(created_by=user) | Q(members__user=user)).distinct().annotate(tasks_count=Count("tasks"))
 
+# views.py — replace get_members with this implementation
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])  # require auth so we can filter by current user
 def get_members(request):
     """
-    Return only Members that were added to projects via accepted invitations.
-    Tries several common Invitation fields for accepted state.
+    GET /api/members/?invited_by_me=1
+    GET /api/members/?project_id=<id>
+
+    Returns Member records (serialized) limited to:
+     - members who accepted invites created by the current user (if invited_by_me=1)
+     - members attached to the given project (if project_id provided and user has access)
+     - otherwise members that belong to projects the current user is part of (safe default)
     """
-    accepted_qs = Invitation.objects.none()
-    try:
-        accepted_qs = Invitation.objects.filter(
-            Q(accepted_at__isnull=False) | Q(is_accepted=True) | Q(accepted_by__isnull=False)
+    user = request.user
+    invited_by_me = request.query_params.get("invited_by_me")
+    project_id = request.query_params.get("project_id")
+
+    members_qs = Member.objects.none()
+
+    # 1) If asked for members accepted from invites created by me
+    if invited_by_me and invited_by_me.lower() in ("1", "true", "yes"):
+        # Invitations created_by = user and accepted_by is set OR accepted_at not null OR accepted == True
+        invites = Invitation.objects.filter(created_by=user).filter(
+            Q(accepted_by__isnull=False) | Q(accepted_at__isnull=False) | Q(accepted=True)
         )
-    except FieldError:
-        candidates = [
-            ("accepted_at__isnull", False),
-            ("accepted_on__isnull", False),
-            ("accepted", True),
-            ("is_accepted", True),
-            ("accepted_by__isnull", False),
-            ("accepted_by_id__isnull", False),
-        ]
-        for field, val in candidates:
-            try:
-                qs = Invitation.objects.filter(**{field: val})
-                if qs.exists():
-                    accepted_qs = qs
-                    break
-            except FieldError:
-                continue
+        # Use emails or accepted_by to find Member objects
+        accepted_user_ids = list(invites.values_list("accepted_by_id", flat=True))
+        accepted_emails = list(invites.values_list("email", flat=True))
+        member_filter = Q()
+        if accepted_user_ids:
+            member_filter |= Q(user__id__in=[x for x in accepted_user_ids if x])
+        if accepted_emails:
+            member_filter |= Q(user__email__in=accepted_emails)
+        if member_filter.children:
+            members_qs = Member.objects.select_related("user").filter(member_filter).distinct()
 
-    if not accepted_qs.exists():
+        serializer = MemberSerializer(members_qs, many=True)
+        return Response(serializer.data)
+
+    # 2) If project_id specified -> return project's members if user can see project
+    if project_id:
         try:
-            invited_emails = Invitation.objects.values_list("email", flat=True)
-            members_matching = Member.objects.filter(user__email__in=invited_emails).values_list("user__email", flat=True)
-            if members_matching:
-                accepted_qs = Invitation.objects.filter(email__in=list(members_matching))
-        except Exception:
-            accepted_qs = Invitation.objects.none()
+            project = Project.objects.get(pk=int(project_id))
+        except (Project.DoesNotExist, ValueError):
+            return Response([], status=status.HTTP_200_OK)
 
-    accepted_emails = list(accepted_qs.values_list("email", flat=True))
-    accepted_user_ids = []
-    try:
-        accepted_user_ids = [x for x in accepted_qs.values_list("accepted_by_id", flat=True) if x]
-    except Exception:
-        accepted_user_ids = []
+        # Check that requesting user is allowed to see this project
+        if not (project.created_by_id == user.id or project.members.filter(user=user).exists()):
+            return Response([], status=status.HTTP_403_FORBIDDEN)
 
-    member_filter = Q()
-    if accepted_emails:
-        member_filter |= Q(user__email__in=accepted_emails)
-    if accepted_user_ids:
-        member_filter |= Q(user__id__in=accepted_user_ids)
+        members_qs = Member.objects.filter(projects__id=project.id).select_related("user").distinct()
+        serializer = MemberSerializer(members_qs, many=True)
+        return Response(serializer.data)
 
-    if not member_filter.children:
-        members = Member.objects.none()
-    else:
-        members = Member.objects.select_related("user").filter(member_filter).distinct()
-
-    serializer = MemberSerializer(members, many=True)
+    # 3) Default: members that appear in projects the current user owns or is a member of
+    members_qs = Member.objects.filter(Q(projects__created_by=user) | Q(projects__members__user=user)).select_related("user").distinct()
+    serializer = MemberSerializer(members_qs, many=True)
     return Response(serializer.data)
-
 
 class ProjectMemberListView(generics.ListAPIView):
     """
@@ -305,7 +305,6 @@ class InvitationListCreateView(generics.ListCreateAPIView):
             except Exception:
                 logger.exception("Failed to send invite email for invitation id=%s", getattr(invitation, "pk", None))
 
-
 class AcceptInvitationView(APIView):
     """
     POST /api/invites/accept/  { "token": "..." }  -> accepts invite (if authenticated)
@@ -317,7 +316,7 @@ class AcceptInvitationView(APIView):
 
     def _get_invitation(self, token: str):
         try:
-            return Invitation.objects.select_related("project").get(token=token)
+            return Invitation.objects.select_related("project", "created_by").get(token=token)
         except Invitation.DoesNotExist:
             return None
 
@@ -330,8 +329,12 @@ class AcceptInvitationView(APIView):
         )
 
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        logger.debug("AcceptInvitation called by user=%s authenticated=%s auth_header=%s",
-                     getattr(request.user, "username", "ANON"), getattr(request.user, "is_authenticated", False), auth_header)
+        logger.debug(
+            "AcceptInvitation called by user=%s authenticated=%s auth_header=%s",
+            getattr(request.user, "username", "ANON"),
+            getattr(request.user, "is_authenticated", False),
+            auth_header,
+        )
 
         if not token:
             return Response({"detail": "token required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -340,6 +343,7 @@ class AcceptInvitationView(APIView):
         if invite is None:
             return Response({"detail": "invalid token"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Validate token / not already accepted
         try:
             valid = True
             if hasattr(invite, "is_valid") and callable(invite.is_valid):
@@ -351,6 +355,7 @@ class AcceptInvitationView(APIView):
                         val = getattr(invite, f)
                         if isinstance(val, bool) and val:
                             already_accepted = True
+                        # any timestamp-like field set implies accepted
                         if val is not None and not (isinstance(val, bool) and val is False):
                             if f.endswith("_at") or f.endswith("_on"):
                                 already_accepted = True
@@ -366,45 +371,70 @@ class AcceptInvitationView(APIView):
             user = request.user
             try:
                 with transaction.atomic():
-                    # Ensure we have a Member record for this user
-                    member_obj, created = Member.objects.get_or_create(user=user, defaults={"role": getattr(invite, "role", "")})
+                    # Ensure Member record exists for this user
+                    member_obj, created = Member.objects.get_or_create(
+                        user=user, defaults={"role": getattr(invite, "role", "")}
+                    )
 
-                    # If invite references a project, attach the member
+                    # Attach the member to the project if present
                     if invite.project:
                         invite.project.members.add(member_obj)
                     else:
-                        logger.warning("Invite %s has no project attached; cannot add member to project", getattr(invite, "pk", None))
+                        logger.warning(
+                            "Invite %s has no project attached; cannot add member to project", getattr(invite, "pk", None)
+                        )
 
-                    # Try to mark invitation accepted reliably
-                    changed = False
-                    if hasattr(invite, "accepted_by"):
-                        try:
-                            invite.accepted_by = user
-                            changed = True
-                        except Exception:
-                            logger.exception("failed to set accepted_by on invite %s", invite.pk)
-                    if hasattr(invite, "accepted_at"):
-                        try:
-                            from django.utils import timezone
-                            invite.accepted_at = timezone.now()
-                            changed = True
-                        except Exception:
-                            logger.exception("failed to set accepted_at on invite %s", invite.pk)
-                    if hasattr(invite, "is_accepted"):
-                        try:
-                            invite.is_accepted = True
-                            changed = True
-                        except Exception:
-                            logger.exception("failed to set is_accepted on invite %s", invite.pk)
-
+                    # Prefer model helper mark_accepted if available
                     try:
                         if hasattr(invite, "mark_accepted") and callable(invite.mark_accepted):
-                            invite.mark_accepted()
-                        elif changed:
-                            invite.save()
+                            # call with the accepting user so the model sets accepted_by/accepted_at consistently
+                            try:
+                                # Some mark_accepted implementations might accept a parameter, others not.
+                                # Try with parameter, fallback to no-arg call.
+                                invite.mark_accepted(accepted_by_user=user)
+                            except TypeError:
+                                # helper doesn't accept params — call without and set accepted_by below if needed
+                                invite.mark_accepted()
+                                # best-effort set accepted_by if model exposes the field
+                                if hasattr(invite, "accepted_by") and invite.accepted_by is None:
+                                    try:
+                                        invite.accepted_by = user
+                                        invite.save(update_fields=["accepted_by"])
+                                    except Exception:
+                                        logger.exception("failed to save accepted_by for invite %s after mark_accepted", invite.pk)
+                        else:
+                            # fallback: set fields individually
+                            changed = False
+                            if hasattr(invite, "accepted_by"):
+                                try:
+                                    invite.accepted_by = user
+                                    changed = True
+                                except Exception:
+                                    logger.exception("failed to set accepted_by on invite %s", invite.pk)
+                            if hasattr(invite, "accepted_at"):
+                                try:
+                                    from django.utils import timezone
+                                    invite.accepted_at = timezone.now()
+                                    changed = True
+                                except Exception:
+                                    logger.exception("failed to set accepted_at on invite %s", invite.pk)
+                            if hasattr(invite, "accepted"):
+                                try:
+                                    invite.accepted = True
+                                    changed = True
+                                except Exception:
+                                    logger.exception("failed to set accepted on invite %s", invite.pk)
+
+                            if changed:
+                                try:
+                                    invite.save()
+                                except Exception:
+                                    logger.exception("failed to save invite %s after setting accepted fields", invite.pk)
                     except Exception:
                         logger.exception("mark_accepted/save failed for invite %s", invite.pk)
 
+                # serialize fresh invite and member to return current state
+                invite.refresh_from_db()
                 invitation_data = InvitationSerializer(invite).data
                 member_data = MemberSerializer(member_obj).data
                 project_members_usernames = []

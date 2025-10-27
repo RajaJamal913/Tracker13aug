@@ -9,10 +9,12 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-
+from rest_framework import pagination
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from projects.models import Member
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +28,8 @@ except Exception:
 
 User = get_user_model()
 
-from .models import TaskAI
-from .serializers import TaskAISerializer
+from .models import TaskAI, TaskReview
+from .serializers import TaskAISerializer, TaskReviewSerializer
 
 
 def _get_candidate_members(limit=200):
@@ -806,6 +808,23 @@ class TaskAIViewSet(viewsets.ModelViewSet):
 
         diag["steps"].append("no resolution found")
         return None, diag
+    
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="stats")
+    
+    def stats(self, request):
+        total_created = TaskAI.objects.filter(created_by=request.user).count()
+        return Response({"total_created": total_created}, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="created")
+    def created(self, request):
+        qs = TaskAI.objects.filter(created_by=request.user).order_by("-created_at")
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
     def _auto_assign_task_instance(self, task: TaskAI):
         """
@@ -910,3 +929,67 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             logger.exception("Failed to save TaskAI with ai_meta when no user resolved")
         logger.info("Auto-assign did not resolve a User for Task %s; diag=%s", task.pk, diag)
         return None
+    
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
+    def reviews(self, request, pk=None):
+        """
+        List reviews for this task.
+        """
+        try:
+            task = TaskAI.objects.get(pk=pk)
+        except TaskAI.DoesNotExist:
+            return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = TaskReview.objects.filter(task=task).order_by("-created_at")
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = TaskReviewSerializer(page, many=True, context={"request": request, "task": task})
+            return self.get_paginated_response(ser.data)
+
+        ser = TaskReviewSerializer(qs, many=True, context={"request": request, "task": task})
+        return Response(ser.data)
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
+    def create_review(self, request, pk=None):
+        """
+        Create a review for this task. Reviewer is taken from request.user -> Member.
+        Expected payload: { "text": "...", "rating": 4 }
+        """
+        try:
+            task = TaskAI.objects.get(pk=pk)
+        except TaskAI.DoesNotExist:
+            return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = TaskReviewSerializer(data=request.data, context={"request": request, "task": task})
+        serializer.is_valid(raise_exception=True)
+        review = serializer.save()
+
+        # Update member aggregates on the MEMBER WHO WAS REVIEWED.
+        # Decide which Member to update: often you review the assignee (task.assignee.member_profile)
+        reviewed_member = None
+        if getattr(task, "assignee", None):
+            try:
+                reviewed_member = Member.objects.get(user=task.assignee)
+            except Member.DoesNotExist:
+                reviewed_member = None
+
+        # If there's a reviewed_member and you've added aggregate fields to Member, update them
+        if reviewed_member:
+            # Recompute aggregates from TaskReview objects that point to tasks assigned to this member
+            # Example: average rating across all reviews for tasks where task.assignee == that member's user
+            # You can change aggregation scope as desired.
+            from django.db.models import Avg, Count
+            agg = TaskReview.objects.filter(task__assignee=reviewed_member.user, rating__isnull=False).aggregate(avg=Avg("rating"), cnt=Count("id"))
+            avg_rating = agg["avg"] or 0.0
+            cnt = agg["cnt"] or 0
+            # Only update if Member model has these fields (optional)
+            if hasattr(reviewed_member, "avg_rating"):
+                reviewed_member.avg_rating = float(avg_rating)
+            if hasattr(reviewed_member, "review_count"):
+                reviewed_member.review_count = int(cnt)
+            if hasattr(reviewed_member, "last_reviewed_at"):
+                reviewed_member.last_reviewed_at = review.created_at
+            reviewed_member.save(update_fields=[f for f in ("avg_rating", "review_count", "last_reviewed_at") if hasattr(reviewed_member, f)])
+
+        out_ser = TaskReviewSerializer(review, context={"request": request, "task": task})
+        return Response(out_ser.data, status=status.HTTP_201_CREATED)

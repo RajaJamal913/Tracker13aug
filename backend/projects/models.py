@@ -104,16 +104,29 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+# in models.py (update Invitation model)
+from django.conf import settings
+from django.utils import timezone
+
 class Invitation(models.Model):
     email = models.EmailField(db_index=True)
     project = models.ForeignKey("Project", on_delete=models.CASCADE, related_name="invitations")
     token = models.CharField(max_length=128, unique=True, db_index=True)
     role = models.CharField(max_length=255, blank=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True,)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True)
     accepted = models.BooleanField(default=False)
     accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # NEW: who accepted (if a registered user accepted)
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_invitations",
+    )
 
     def save(self, *args, **kwargs):
         if not self.token:
@@ -125,17 +138,17 @@ class Invitation(models.Model):
     def is_valid(self):
         return (not self.accepted) and (self.expires_at >= timezone.now())
 
-    
-    def mark_accepted(self):
+    def mark_accepted(self, accepted_by_user=None):
         """
-        Mark invitation as accepted, set timestamp and notify inviter.
+        Prefer calling this helper to mark the invitation accepted.
         """
         self.accepted = True
         self.accepted_at = timezone.now()
-        # Only update those two fields to minimize DB writes
-        self.save(update_fields=["accepted", "accepted_at"])
-
-        # Notify the user who created the invite (created_by) that the invite was accepted.
+        if accepted_by_user:
+            self.accepted_by = accepted_by_user
+        # Save the explicit fields
+        self.save(update_fields=["accepted", "accepted_at", "accepted_by"])
+        # Optionally notify inviter (your existing logic)
         try:
             inviter = self.created_by
             if inviter and inviter.email:

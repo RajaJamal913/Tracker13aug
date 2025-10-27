@@ -158,3 +158,59 @@ class TaskAISerializer(serializers.ModelSerializer):
                 validated_data["ai_meta"] = {}
 
         return super().create(validated_data)
+
+# serializers.py (append)
+
+from rest_framework import serializers
+from .models import TaskReview, TaskAI
+from projects.models import Member
+
+class TaskReviewSerializer(serializers.ModelSerializer):
+    reviewer = serializers.SerializerMethodField(read_only=True)
+    reviewer_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = TaskReview
+        fields = ["id", "task", "text", "rating", "created_at", "updated_at", "reviewer", "reviewer_id"]
+        read_only_fields = ["id", "created_at", "updated_at", "reviewer", "task"]
+
+    def get_reviewer(self, obj):
+        if obj.reviewer:
+            return {
+                "id": obj.reviewer.pk,
+                "username": getattr(obj.reviewer.user, "username", None),
+                "role": obj.reviewer.role,
+            }
+        return None
+
+    def validate_rating(self, value):
+        if value is None:
+            return value
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+        return value
+
+    def create(self, validated_data):
+        # task must be passed via view's context (we'll ensure that from view)
+        request = self.context.get("request")
+        task = self.context.get("task")
+        if not task:
+            raise serializers.ValidationError("Task context missing.")
+
+        reviewer_member = None
+        # If client provided reviewer_id (rare), allow it for admin usage; otherwise use request.user
+        reviewer_id = validated_data.pop("reviewer_id", None)
+        if reviewer_id:
+            try:
+                reviewer_member = Member.objects.get(pk=reviewer_id)
+            except Member.DoesNotExist:
+                raise serializers.ValidationError({"reviewer_id": "Member not found."})
+        else:
+            if request and getattr(request, "user", None) and request.user.is_authenticated:
+                try:
+                    reviewer_member = Member.objects.get(user=request.user)
+                except Member.DoesNotExist:
+                    reviewer_member = None
+
+        review = TaskReview.objects.create(task=task, reviewer=reviewer_member, **validated_data)
+        return review

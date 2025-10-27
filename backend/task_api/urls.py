@@ -9,4 +9,9 @@ urlpatterns = [
     # IMPORTANT: map the action method name 'auto_assign' here
     path('tasksai/auto-assign/', TaskAIViewSet.as_view({'post': 'auto_assign'}), name='taskai-auto-assign'),
     path('tasksai/my/', TaskAIViewSet.as_view({'get': 'my'}), name='task-my'),
+    # your_app/urls.py (merge with your existing endpoints)
+    path('tasksai/stats/', TaskAIViewSet.as_view({'get': 'stats'}), name='taskai-stats'),
+    path('tasksai/created/', TaskAIViewSet.as_view({'get': 'created'}), name='taskai-created'),
+      path('tasksai/<int:pk>/reviews/', TaskAIViewSet.as_view({'get': 'reviews', 'post': 'create_review'}), name='task-reviews'),
+
 ]

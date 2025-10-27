@@ -1,4 +1,3 @@
-// TeamsPage.tsx
 "use client";
 
 import React, { JSX, useEffect, useState } from "react";
@@ -23,7 +22,7 @@ export default function TeamsPage(): JSX.Element {
       ? process.env.NEXT_PUBLIC_API_HOST ?? "http://127.0.0.1:8000"
       : process.env.NEXT_PUBLIC_API_HOST ?? "http://127.0.0.1:8000";
 
-  // convenience endpoints
+  // convenience endpoints (members fetch will append ?invited_by_me=1 below)
   const MEMBERS_URL = `${API_HOST}/api/members/`;
   const TEAMS_URL = `${API_HOST}/api/teams/`;
 
@@ -56,7 +55,12 @@ export default function TeamsPage(): JSX.Element {
       const last = u.last_name ?? u.last ?? "";
       const maybeFull = (first || last) ? `${first} ${last}`.trim() : "";
       // prefer full name -> username -> email
-      name = maybeFull || (typeof u.get_full_name === "function" ? u.get_full_name() : null) || u.full_name || u.username || null;
+      name =
+        maybeFull ||
+        (typeof u.get_full_name === "function" ? u.get_full_name() : null) ||
+        u.full_name ||
+        u.username ||
+        null;
       email = email || u.email || null;
     }
 
@@ -81,11 +85,13 @@ export default function TeamsPage(): JSX.Element {
     return members.find((m) => Number(m.id) === Number(id)) ?? null;
   };
 
-  // Fetch members
+  // Fetch members — ONLY those who accepted invites created by the current user.
   useEffect(() => {
     if (!token) return;
 
-    fetch(MEMBERS_URL, {
+    const url = `${MEMBERS_URL}?invited_by_me=1`; // <-- only invited-and-accepted members
+
+    fetch(url, {
       method: "GET",
       credentials: "include",
       headers: {
@@ -94,7 +100,11 @@ export default function TeamsPage(): JSX.Element {
       },
     })
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status} - ${res.statusText}`);
+        // if server blocks (401/403) return empty list gracefully
+        if (!res.ok) {
+          console.warn("Members fetch returned non-OK status", res.status, res.statusText);
+          return Promise.resolve([]);
+        }
         return res.json();
       })
       .then((data: any) => {

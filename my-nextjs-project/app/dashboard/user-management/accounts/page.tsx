@@ -5,6 +5,9 @@ import { useState, useEffect } from "react";
 import { Card, Table, Form, Button } from "react-bootstrap";
 import { FaUserPlus } from "react-icons/fa";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 interface Project {
   id: number;
   name: string;
@@ -29,7 +32,7 @@ export default function Home() {
       return;
     }
 
-    fetch("http://127.0.0.1:8000/api/projects/", {
+    fetch(`${API_BASE_URL}/api/projects/`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

@@ -1,23 +1,28 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { JSX, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import TaskCompletionChart from "@/components/charts/task-completion-chart";
 import ProductivityChart from "@/components/charts/monthly-productivity-chart";
 import { Modal, Form, Spinner } from "react-bootstrap";
 import { Dropdown } from "primereact/dropdown";
 
+type Project = {
+  id?: number | string;
+  pk?: number | string;
+  name?: string;
+  title?: string;
+  project_name?: string;
+  [k: string]: any;
+};
+
 const PROJECT_TYPES = {
   WEB: "Web",
   MOBILE: "Mobile",
   BOTH: "Both",
-};
+} as const;
 
-const priorityOptions = ["High", "Medium", "Low"].map((p) => ({
-  label: p,
-  value: p,
-}));
-
+const priorityOptions = ["High", "Medium", "Low"].map((p) => ({ label: p, value: p }));
 const projectTypeOptions = [
   { label: "Web", value: PROJECT_TYPES.WEB },
   { label: "Mobile", value: PROJECT_TYPES.MOBILE },
@@ -39,25 +44,17 @@ const allTags = [
   "Management",
 ];
 
-type Project = {
-  id?: number | string;
-  pk?: number | string;
-  name?: string;
-  title?: string;
-  project_name?: string;
-  [k: string]: any;
-};
-
 const PREVIEW_STORAGE_KEY = "task_preview_items";
 const PREVIEW_PROJECTS_KEY = "task_preview_projects";
 
-export default function SmartTaskMgt() {
+export default function SmartTaskMgt(): JSX.Element {
   const router = useRouter();
 
+  // modal + tasks preview
   const [show, setShow] = useState(false);
   const [tasks, setTasks] = useState<any[]>([]);
 
-  // projects state (dynamic)
+  // projects state
   const [projectOptions, setProjectOptions] = useState<{ label: string; value: any }[]>([]);
   const [projectsIndex, setProjectsIndex] = useState<Record<string | number, Project>>({});
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -73,14 +70,19 @@ export default function SmartTaskMgt() {
   const [figmaDesc, setFigmaDesc] = useState("");
   const [priority, setPriority] = useState<any>(null);
   const [deadline, setDeadline] = useState("");
+  // hours is either number or empty string for controlled input
   const [hours, setHours] = useState<number | "">("");
   const [tags, setTags] = useState<string[]>([]);
 
-  // UX states
+  // UX / saving
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // helper to get project display label
+  // total tasks stat
+  const [totalCreatedTasks, setTotalCreatedTasks] = useState<number | null>(null);
+  const [totalLoading, setTotalLoading] = useState<boolean>(true);
+
+  // helper to display project label
   const projectLabel = (id: any) => {
     if (id == null) return "";
     const p = projectsIndex[id];
@@ -88,47 +90,76 @@ export default function SmartTaskMgt() {
     return p.name ?? p.title ?? p.project_name ?? `Project ${id}`;
   };
 
+  // fetchWithAuth helper — _defined before_ effects so they can call it
+  const fetchWithAuth = async (
+    path: string,
+    opts: RequestInit = {},
+    attemptAuthSchemes: ("Token" | "Bearer")[] = ["Token", "Bearer"]
+  ): Promise<Response> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + path;
+    if (!token) {
+      return fetch(url, { ...opts, credentials: "include" });
+    }
+
+    let lastRes: Response | null = null;
+    for (const scheme of attemptAuthSchemes) {
+      const headers = new Headers(opts.headers ?? {});
+      if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+      headers.set("Authorization", `${scheme} ${token}`);
+
+      const res = await fetch(url, { ...opts, headers, credentials: "include" });
+      lastRes = res;
+      if (res.status !== 401) return res;
+    }
+    // lastRes is non-null because token was present and loop ran
+    return lastRes!;
+  };
+
   // fetch projects on mount
   useEffect(() => {
+    let mounted = true;
+
     const fetchProjects = async () => {
       setLoadingProjects(true);
       setProjectsError(null);
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        if (!token) {
+          if (!mounted) return;
+          setProjectsError("No token found");
+          setProjectOptions([]);
+          setProjectsIndex({});
+          setLoadingProjects(false);
+          return;
+        }
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (!token) {
-        console.warn("[Projects] no token in localStorage");
-        setProjectsError("No token found");
-        setProjectOptions([]);
-        setProjectsIndex({});
-        setLoadingProjects(false);
-        return;
-      }
-
-      const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + "/api/projects/";
-
-      const doFetch = async (authScheme: "Token" | "Bearer") => {
-        const res = await fetch(url, {
+        // try Token and then Bearer
+        const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + "/api/projects/";
+        let res = await fetch(url, {
           method: "GET",
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `${authScheme} ${token}`,
+            Authorization: `Token ${token}`,
           },
         });
-        return res;
-      };
-
-      try {
-        let res = await doFetch("Token");
 
         if (res.status === 401) {
-          console.warn("[Projects] 401 with Token, retrying with Bearer...");
-          res = await doFetch("Bearer");
+          res = await fetch(url, {
+            method: "GET",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          });
         }
 
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
           console.error("[Projects] fetch failed:", res.status, txt);
+          if (!mounted) return;
           setProjectsError(`Failed to load projects: ${res.status}`);
           setProjectOptions([]);
           setProjectsIndex({});
@@ -136,11 +167,7 @@ export default function SmartTaskMgt() {
           return;
         }
 
-        const data = await res.json().catch((err) => {
-          console.error("[Projects] JSON parse error:", err);
-          return null;
-        });
-
+        const data = await res.json().catch(() => null);
         let list: any[] = [];
         if (Array.isArray(data)) list = data;
         else if (data && Array.isArray(data.results)) list = data.results;
@@ -160,47 +187,60 @@ export default function SmartTaskMgt() {
           return { label, value: id };
         });
 
+        if (!mounted) return;
         setProjectsIndex(index);
         setProjectOptions(opts);
         if (opts.length === 0) setProjectsError("No projects returned from the API.");
       } catch (err: any) {
         console.error("[Projects] fetch error:", err);
+        if (!mounted) return;
         setProjectsError(String(err?.message ?? err) || "Unknown error");
         setProjectOptions([]);
         setProjectsIndex({});
       } finally {
+        if (!mounted) return;
         setLoadingProjects(false);
       }
     };
 
     fetchProjects();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // helper: fetchWithAuth for tasks
-  const fetchWithAuth = async (
-    path: string,
-    opts: RequestInit = {},
-    attemptAuthSchemes: ("Token" | "Bearer")[] = ["Token", "Bearer"]
-  ) => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + path;
-    if (!token) {
-      // try unauthenticated call
-      return fetch(url, { ...opts, credentials: "include" });
-    }
-
-    let lastRes: Response | null = null;
-    for (const scheme of attemptAuthSchemes) {
-      const headers = new Headers(opts.headers ?? {});
-      if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-      headers.set("Authorization", `${scheme} ${token}`);
-
-      const res = await fetch(url, { ...opts, headers, credentials: "include" });
-      lastRes = res;
-      if (res.status !== 401) return res;
-    }
-    return lastRes!;
-  };
+  // fetch total created tasks stat
+  useEffect(() => {
+    let mounted = true;
+    const fetchStats = async () => {
+      if (!mounted) return;
+      setTotalLoading(true);
+      try {
+        const res = await fetchWithAuth("/api/tasksai/stats/");
+        if (!res || !res.ok) {
+          if (!mounted) return;
+          setTotalCreatedTasks(0);
+          setTotalLoading(false);
+          return;
+        }
+        const json = await res.json().catch(() => ({}));
+        if (!mounted) return;
+        const n = Number(json.total_created ?? json.total ?? 0);
+        setTotalCreatedTasks(Number.isNaN(n) ? 0 : n);
+      } catch (err) {
+        console.error("[Tasks Stats] fetch error", err);
+        if (!mounted) return;
+        setTotalCreatedTasks(0);
+      } finally {
+        if (!mounted) return;
+        setTotalLoading(false);
+      }
+    };
+    fetchStats();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // create task: POST to backend and append returned item to tasks
   const createTaskOnServer = async (payload: Record<string, any>) => {
@@ -232,7 +272,6 @@ export default function SmartTaskMgt() {
     setSaveError(null);
     setSaving(true);
 
-    // build payload matching backend serializer
     const payload: Record<string, any> = {
       selectedProjectId: selectedProjectId ?? null,
       title: title?.trim() ?? "",
@@ -250,13 +289,9 @@ export default function SmartTaskMgt() {
     try {
       const created = await createTaskOnServer(payload);
 
-      // Determine the project id used (prefer server's value if provided)
       const projectId = created.selectedProjectId ?? created.project ?? selectedProjectId ?? null;
-
-      // Compute a human-friendly label from your local projectsIndex (fallback to projectId)
       const computedLabel = projectLabel(projectId);
 
-      // If server returned a project object try to extract a name
       const serverProjectName =
         (created.project && (created.project.name || created.project.title || created.project.project_name)) ||
         created.project_name ||
@@ -264,21 +299,17 @@ export default function SmartTaskMgt() {
 
       const finalProjectLabel = serverProjectName ?? computedLabel;
 
-      // attach a projectLabel to the created task so the preview can display it directly
       const createdWithLabel = { ...created, selectedProjectId: projectId, projectLabel: finalProjectLabel };
 
-      // Build the new tasks array (server-canonical item first)
       const newTasks = [createdWithLabel, ...tasks];
       setTasks(newTasks);
 
-      // persist tasks for preview page to consume
       try {
         localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(newTasks));
       } catch (e) {
         console.warn("Failed to write preview tasks to localStorage", e);
       }
 
-      // also persist a small map of projectId -> projectLabel derived from projectsIndex
       try {
         const projectLabelsMap: Record<string, string> = {};
         Object.entries(projectsIndex).forEach(([k, v]) => {
@@ -292,7 +323,8 @@ export default function SmartTaskMgt() {
         console.warn("Failed to save project labels to localStorage", e);
       }
 
-      // navigate to preview page
+      setShow(false);
+      // navigate to preview page (adjust if you don't have this route)
       router.push("/dashboard/task-new/preview");
     } catch (err: any) {
       console.error("[Tasks] create failed:", err);
@@ -303,8 +335,10 @@ export default function SmartTaskMgt() {
   };
 
   const handleTagChange = (tag: string, checked: boolean) => {
-    if (checked) setTags((prev) => [...prev, tag]);
-    else setTags((prev) => prev.filter((t) => t !== tag));
+    setTags((prev) => {
+      if (checked) return [...prev, tag];
+      return prev.filter((t) => t !== tag);
+    });
   };
 
   return (
@@ -325,11 +359,19 @@ export default function SmartTaskMgt() {
         <div className="row card_wrapper_bg_grad p-4 row w-100 mx-auto">
           {/* stat cards */}
           <div className="col-md-3 col-sm-6">
-            <div className="card stat-card text-white text-center p-3 card_bg_grad ">
+            <div
+              className="card stat-card text-white text-center p-3 card_bg_grad"
+              role="button"
+              onClick={() => router.push("/dashboard/task-new/taskcreated")}
+              style={{ cursor: "pointer" }}
+              title="View tasks you created"
+            >
               <div className="icon-circle mb-2">{/* svg */}</div>
               <div className="card-data-wrap">
-                <h5 className="mb-0 fw-bold">15</h5>
-                <small>Total Task</small>
+                <h5 className="mb-0 fw-bold">
+                  {totalLoading ? <Spinner animation="border" size="sm" /> : totalCreatedTasks ?? 0}
+                </h5>
+                <small>My Created Tasks</small>
               </div>
             </div>
           </div>
@@ -376,9 +418,7 @@ export default function SmartTaskMgt() {
           </div>
         </div>
 
-        <div className="row col-lg-12">
-          {/* Task preview moved to /tasks/preview */}
-        </div>
+        <div className="row col-lg-12">{/* Task preview moved to /tasks/preview */}</div>
       </div>
 
       {/* Modal */}
@@ -401,7 +441,7 @@ export default function SmartTaskMgt() {
                 <Dropdown
                   value={selectedProjectId}
                   options={projectOptions}
-                  onChange={(e) => setSelectedProjectId(e.target.value ?? e.value)}
+                  onChange={(e: any) => setSelectedProjectId(e.value)}
                   placeholder={loadingProjects ? "Loading projects..." : "Select"}
                   className="w-100"
                   disabled={loadingProjects || projectOptions.length === 0}
@@ -411,53 +451,29 @@ export default function SmartTaskMgt() {
                     <Spinner animation="border" size="sm" /> Loading projects...
                   </div>
                 )}
-                {!loadingProjects && projectsError && (
-                  <div className="mt-2 text-danger">Projects: {projectsError}</div>
-                )}
+                {!loadingProjects && projectsError && <div className="mt-2 text-danger">Projects: {projectsError}</div>}
               </div>
             </div>
 
             {/* Title */}
             <div className="col-md-4 mb-3">
               <Form.Label>Title</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter task title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Form.Control type="text" placeholder="Enter task title" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
 
             {/* Project Type */}
             <div className="col-md-4 mb-3">
               <Form.Label>Select Project Type</Form.Label>
-              <Dropdown
-                value={projectType}
-                options={projectTypeOptions}
-                onChange={(e) => setProjectType(e.value)}
-                placeholder="Select a Project Type"
-                className="w-100"
-              />
+              <Dropdown value={projectType} options={projectTypeOptions} onChange={(e: any) => setProjectType(e.value)} placeholder="Select a Project Type" className="w-100" />
 
-              <Form.Check
-                type="checkbox"
-                label="Figma Design"
-                className="mt-2"
-                checked={showFigma}
-                onChange={(e) => setShowFigma(e.target.checked)}
-              />
+              <Form.Check type="checkbox" label="Figma Design" className="mt-2" checked={showFigma} onChange={(e) => setShowFigma((e.target as HTMLInputElement).checked)} />
             </div>
 
             {/* Web Modules */}
             {(projectType === PROJECT_TYPES.WEB || projectType === PROJECT_TYPES.BOTH) && (
               <div className="col-md-6 mb-3">
                 <Form.Label>Web Modules Description</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  placeholder="Enter web modules description"
-                  value={webDesc}
-                  onChange={(e) => setWebDesc(e.target.value)}
-                />
+                <Form.Control as="textarea" placeholder="Enter web modules description" value={webDesc} onChange={(e) => setWebDesc(e.target.value)} />
               </div>
             )}
 
@@ -465,12 +481,7 @@ export default function SmartTaskMgt() {
             {(projectType === PROJECT_TYPES.MOBILE || projectType === PROJECT_TYPES.BOTH) && (
               <div className="col-md-6 mb-3">
                 <Form.Label>Mobile Modules Description</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  placeholder="Enter mobile modules description"
-                  value={mobileDesc}
-                  onChange={(e) => setMobileDesc(e.target.value)}
-                />
+                <Form.Control as="textarea" placeholder="Enter mobile modules description" value={mobileDesc} onChange={(e) => setMobileDesc(e.target.value)} />
               </div>
             )}
 
@@ -478,12 +489,7 @@ export default function SmartTaskMgt() {
             {showFigma && (
               <div className="col-md-6 mb-3">
                 <Form.Label>Figma Modules Description</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  placeholder="Enter figma modules description"
-                  value={figmaDesc}
-                  onChange={(e) => setFigmaDesc(e.target.value)}
-                />
+                <Form.Control as="textarea" placeholder="Enter figma modules description" value={figmaDesc} onChange={(e) => setFigmaDesc(e.target.value)} />
               </div>
             )}
           </div>
@@ -492,23 +498,13 @@ export default function SmartTaskMgt() {
             {/* Priority */}
             <div className="col-md-6 mb-3">
               <Form.Label>Priority</Form.Label>
-              <Dropdown
-                value={priority}
-                options={priorityOptions}
-                onChange={(e) => setPriority(e.value)}
-                placeholder="Select Priority"
-                className="w-100"
-              />
+              <Dropdown value={priority} options={priorityOptions} onChange={(e: any) => setPriority(e.value)} placeholder="Select Priority" className="w-100" />
             </div>
 
             {/* Deadline */}
             <div className="col-md-6 mb-3">
               <Form.Label>Deadline</Form.Label>
-              <Form.Control
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-              />
+              <Form.Control type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </div>
 
             {/* Hours */}
@@ -516,8 +512,11 @@ export default function SmartTaskMgt() {
               <Form.Label>Estimated Hours</Form.Label>
               <Form.Control
                 type="number"
-                value={hours as number | string}
-                onChange={(e) => setHours(Number(e.target.value))}
+                value={hours === "" ? "" : String(hours)}
+                onChange={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  setHours(v === "" ? "" : Number(v));
+                }}
               />
             </div>
           </div>
@@ -528,12 +527,7 @@ export default function SmartTaskMgt() {
             <div className="row">
               {allTags.map((tag) => (
                 <div className="col-md-4" key={tag}>
-                  <Form.Check
-                    type="checkbox"
-                    label={tag}
-                    checked={tags.includes(tag)}
-                    onChange={(e) => handleTagChange(tag, e.target.checked)}
-                  />
+                  <Form.Check type="checkbox" label={tag} checked={tags.includes(tag)} onChange={(e) => handleTagChange(tag, (e.target as HTMLInputElement).checked)} />
                 </div>
               ))}
             </div>

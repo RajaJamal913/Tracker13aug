@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { Button, Form, Spinner } from 'react-bootstrap';
 import Cookies from 'js-cookie';
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 export default function ProfileTabs() {
   // ─── Tab state ───────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'profile'|'personal'|'security'>('profile');
@@ -32,19 +35,16 @@ export default function ProfileTabs() {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
   const csrfHeader = () => ({ 'X-CSRFToken': Cookies.get('csrftoken') || '' });
-  // build change 
-  // const authHeader = () => {
-  //   const token = localStorage.getItem('token');
-  //   return token ? { 'Authorization': `Token ${token}` } : {};
-  // };
-const authHeader = (): Record<string, string> => {
-  const token = localStorage.getItem('token');
-  return token ? { 'Authorization': `Token ${token}` } : {};
-};
+  
+  const authHeader = (): Record<string, string> => {
+    const token = localStorage.getItem('token');
+    return token ? { 'Authorization': `Token ${token}` } : {};
+  };
+
   // ─── Initial data fetch ──────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      fetch('http://127.0.0.1:8000/api/auth/profile/', {
+      fetch(`${API_BASE_URL}/api/auth/profile/`, {
         method: 'GET',
         credentials: 'include',
         headers: { ...authHeader(), ...csrfHeader() },
@@ -52,7 +52,7 @@ const authHeader = (): Record<string, string> => {
         if (!res.ok) throw new Error('Failed to load profile');
         return res.json();
       }),
-      fetch('http://127.0.0.1:8000/api/auth/personal/', {
+      fetch(`${API_BASE_URL}/api/auth/personal/`, {
         method: 'GET',
         credentials: 'include',
         headers: { ...authHeader(), ...csrfHeader() },
@@ -80,7 +80,7 @@ const authHeader = (): Record<string, string> => {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/auth/profile/', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/profile/`, {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -103,7 +103,7 @@ const authHeader = (): Record<string, string> => {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/auth/personal/', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/personal/`, {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -131,7 +131,7 @@ const authHeader = (): Record<string, string> => {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/auth/password/', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/password/`, {
         method: 'POST',
         credentials: 'include',
         headers: {

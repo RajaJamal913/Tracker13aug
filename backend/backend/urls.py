@@ -15,4 +15,5 @@ urlpatterns = [
          path('api/', include('tracker.urls')),
            path('api/', include('reports.urls')),
            path("api/", include("task_api.urls")),
+           path("api/twofactor/", include("twofactor.urls")),
 ]

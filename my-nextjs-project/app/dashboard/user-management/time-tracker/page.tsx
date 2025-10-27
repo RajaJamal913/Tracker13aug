@@ -10,6 +10,8 @@ import {
   Container,
 } from "react-bootstrap";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
 
 interface MemberStatus {
   id: number;
@@ -35,7 +37,7 @@ export default function TrackingPage() {
     setToken(saved);
   }, []);
 
-  // 2) Fetch members’ statuses once token is set
+  // 2) Fetch members' statuses once token is set
   useEffect(() => {
     if (!token) return;
 
@@ -45,7 +47,7 @@ export default function TrackingPage() {
 
       try {
         const res = await fetch(
-          "http://127.0.0.1:8000/api/monitor/members-status/",
+          `${API_BASE_URL}/api/monitor/members-status/`,
           {
             method: "GET",
             headers: {
@@ -60,7 +62,7 @@ export default function TrackingPage() {
             setError("Authentication failed. Please log in again.");
           } else {
             const text = await res.text();
-            setError(`Failed to fetch members’ status: ${text}`);
+            setError(`Failed to fetch members' status: ${text}`);
           }
           setMembers([]);
           setLoading(false);
@@ -70,7 +72,7 @@ export default function TrackingPage() {
         const data: MemberStatus[] = await res.json();
         setMembers(data);
       } catch {
-        setError("Network error while fetching members’ status.");
+        setError("Network error while fetching members' status.");
         setMembers([]);
       } finally {
         setLoading(false);

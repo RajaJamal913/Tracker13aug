@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'tracker',
     'leave',
     'shifts',
+    'twofactor',
     'reports',
     'task_api',
  
@@ -195,4 +196,3 @@ DEFAULT_FROM_EMAIL = "no-reply@yourdomain.com"
 # settings.py
 # settings.py
 # Add your server-side OpenAI key and preferred model
-

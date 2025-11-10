@@ -2,6 +2,7 @@
 import json
 import re
 import logging
+import random
 
 from django.apps import apps
 from django.conf import settings
@@ -13,8 +14,6 @@ from rest_framework import pagination
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from projects.models import Member
 
 logger = logging.getLogger(__name__)
 
@@ -30,82 +29,6 @@ User = get_user_model()
 
 from .models import TaskAI, TaskReview
 from .serializers import TaskAISerializer, TaskReviewSerializer
-
-
-def _get_candidate_members(limit=200):
-    """
-    Defensive candidate loader returning compact dicts:
-      { id, user_id (if present), name, email, skills, experience, developer_type, role, raw }
-    Tries members.Member then falls back to auth.User.
-    """
-    candidates = []
-    # Try Member model
-    try:
-        Member = apps.get_model("members", "Member")
-    except Exception:
-        Member = None
-
-    if Member is not None:
-        try:
-            qs = Member.objects.filter(is_active=True).select_related("user")[:limit]
-            for m in qs:
-                try:
-                    user = getattr(m, "user", None)
-                    user_id = getattr(user, "id", None) if user else None
-                    email = getattr(user, "email", None) if user else None
-                    name = (
-                        (getattr(user, "get_full_name", None) and user.get_full_name())
-                        or getattr(user, "username", None)
-                        or getattr(m, "username", None)
-                        or getattr(m, "full_name", None)
-                        or str(m)
-                    )
-                except Exception:
-                    user_id = None
-                    email = None
-                    name = getattr(m, "username", None) or getattr(m, "full_name", None) or str(m)
-
-                candidates.append({
-                    "id": getattr(m, "id", None),
-                    "user_id": user_id,
-                    "name": name,
-                    "email": email,
-                    "skills": getattr(m, "skills", "") or "",
-                    "experience": getattr(m, "experience", 0) or 0,
-                    "role": getattr(m, "role", "") or "",
-                    "developer_type": getattr(m, "developer_type", None) or getattr(m, "dev_type", None) or None,
-                    "raw": {"member_pk": getattr(m, "pk", None)},
-                })
-            if candidates:
-                return candidates
-        except Exception:
-            logger.exception("Error reading members.Member - falling back to auth.User")
-
-    # Fallback: auth.User
-    try:
-        qs = User.objects.filter(is_active=True)[:limit]
-        for u in qs:
-            profile = getattr(u, "profile", None)
-            skills = getattr(profile, "skills", "") if profile else (getattr(u, "skills", "") if hasattr(u, "skills") else "")
-            experience = getattr(profile, "experience", 0) if profile else (getattr(u, "experience", 0) if hasattr(u, "experience") else 0)
-            devtype = (getattr(profile, "developer_type", None) if profile else None) or getattr(u, "developer_type", None) or getattr(u, "dev_type", None) or None
-            name = (getattr(u, "get_full_name", None) and u.get_full_name()) or getattr(u, "username", None) or str(u)
-            email = getattr(u, "email", None)
-            candidates.append({
-                "id": getattr(u, "id", None),
-                "user_id": getattr(u, "id", None),
-                "name": name,
-                "email": email,
-                "skills": skills or "",
-                "experience": experience or 0,
-                "role": getattr(profile, "role", "") if profile else (getattr(u, "role", "") if hasattr(u, "role") else ""),
-                "developer_type": devtype,
-                "raw": {"user_pk": getattr(u, "pk", None)},
-            })
-    except Exception:
-        logger.exception("Error reading auth.User for candidates")
-
-    return candidates
 
 
 def _extract_json_from_text(text: str):
@@ -127,6 +50,134 @@ def _extract_json_from_text(text: str):
     return None
 
 
+def _get_candidate_members(limit=200):
+    """
+    Defensive candidate loader returning compact dicts:
+      { id, user_id (if present), name, email, skills, experience, developer_type, role, raw, current_load }
+
+    Robust skill extraction: checks several potential fields and normalizes.
+    """
+    candidates = []
+    # Try Member model
+    try:
+        MemberModel = apps.get_model("members", "Member")
+    except Exception:
+        MemberModel = None
+
+    if MemberModel is not None:
+        try:
+            qs = MemberModel.objects.filter(is_active=True).select_related("user")[:limit]
+            for m in qs:
+                user = getattr(m, "user", None)
+                user_id = getattr(user, "id", None) if user else None
+                email = getattr(user, "email", None) if user else None
+                # gather skills from multiple possible fields
+                skills = getattr(m, "skills", None) or getattr(m, "skillset", None) or getattr(m, "expertise", None) or ""
+                if isinstance(skills, (list, tuple)):
+                    skills = ",".join([str(s) for s in skills])
+                experience = getattr(m, "experience", None) or getattr(m, "years_experience", None) or 0
+                devtype = getattr(m, "developer_type", None) or getattr(m, "dev_type", None) or getattr(m, "type", None)
+                name = (
+                    (getattr(user, "get_full_name", None) and user.get_full_name())
+                    or getattr(user, "username", None)
+                    or getattr(m, "username", None)
+                    or getattr(m, "full_name", None)
+                    or str(m)
+                )
+                candidates.append({
+                    "id": getattr(m, "id", None),
+                    "user_id": user_id,
+                    "name": name,
+                    "email": email,
+                    "skills": skills or "",
+                    "experience": experience or 0,
+                    "role": getattr(m, "role", "") or "",
+                    "developer_type": devtype,
+                    "raw": {"member_pk": getattr(m, "pk", None), "source": "members.Member"},
+                })
+        except Exception:
+            logger.exception("Error reading members.Member - falling back to auth.User")
+
+    # Append auth.User fallback
+    try:
+        qs = User.objects.filter(is_active=True)[:limit]
+        for u in qs:
+            profile = getattr(u, "profile", None)
+            skills = None
+            if profile:
+                skills = getattr(profile, "skills", None) or getattr(profile, "skillset", None) or getattr(profile, "expertise", None)
+            if not skills:
+                skills = getattr(u, "skills", None) or getattr(u, "skillset", None) or ""
+            if isinstance(skills, (list, tuple)):
+                skills = ",".join([str(s) for s in skills])
+            experience = getattr(profile, "experience", None) if profile else getattr(u, "experience", None)
+            experience = experience or 0
+            devtype = (getattr(profile, "developer_type", None) if profile else None) or getattr(u, "developer_type", None) or getattr(u, "dev_type", None)
+            name = (getattr(u, "get_full_name", None) and u.get_full_name()) or getattr(u, "username", None) or str(u)
+            email = getattr(u, "email", None)
+            candidates.append({
+                "id": getattr(u, "id", None),
+                "user_id": getattr(u, "id", None),
+                "name": name,
+                "email": email,
+                "skills": skills or "",
+                "experience": experience or 0,
+                "role": getattr(profile, "role", "") if profile else (getattr(u, "role", "") if hasattr(u, "role") else ""),
+                "developer_type": devtype,
+                "raw": {"user_pk": getattr(u, "pk", None), "source": "auth.User"},
+            })
+    except Exception:
+        logger.exception("Error reading auth.User for candidates")
+
+    # Dedupe by user_id or id (prefer higher experience)
+    dedup = {}
+    for c in candidates:
+        key = c.get("user_id") or c.get("id")
+        if key is None:
+            continue
+        key = str(key)
+        existing = dedup.get(key)
+        try:
+            cur_exp = float(c.get("experience") or 0)
+        except Exception:
+            cur_exp = 0.0
+        if not existing:
+            dedup[key] = c
+        else:
+            try:
+                existing_exp = float(existing.get("experience") or 0)
+            except Exception:
+                existing_exp = 0.0
+            if cur_exp > existing_exp:
+                dedup[key] = c
+
+    final = []
+    for key, c in dedup.items():
+        try:
+            uid = int(key)
+            load = TaskAI.objects.filter(assignee_id=uid).count()
+        except Exception:
+            load = 0
+        c["current_load"] = load
+        final.append(c)
+
+    if not final:
+        # fallback: decorate original list if dedupe removed all
+        for c in candidates:
+            key = c.get("user_id") or c.get("id")
+            try:
+                uid = int(key) if key is not None else None
+                load = TaskAI.objects.filter(assignee_id=uid).count() if uid else 0
+            except Exception:
+                load = 0
+            c["current_load"] = load
+        return candidates[:limit]
+
+    # sort by experience desc (heuristic)
+    final.sort(key=lambda x: float(x.get("experience") or 0), reverse=True)
+    return final[:limit]
+
+
 class TaskAIViewSet(viewsets.ModelViewSet):
     queryset = TaskAI.objects.all()
     serializer_class = TaskAISerializer
@@ -135,31 +186,55 @@ class TaskAIViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "web_desc", "mobile_desc", "figma_desc", "tags"]
     ordering_fields = ["deadline", "created_at", "priority"]
 
-    def get_queryset(self):
-        """
-        Return the queryset visible to the requesting user.
+    # small helpers
+    @staticmethod
+    def _as_bool(value):
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
 
-        - Staff: full queryset.
-        - Non-staff: tasks created by the user, tasks assigned to the user,
-          or tasks that belong to projects the user is a member of.
-        """
+    @staticmethod
+    def infer_task_dev_type(t):
+        raw = None
+        tags = []
+        if isinstance(t, dict):
+            raw = t.get("developer_type") or t.get("required_developer_type") or t.get("project_type") or ""
+            tags = t.get("tags") or []
+        else:
+            raw = t or ""
+        raw_s = str(raw).strip().lower()
+        if raw_s in ("mobile", "android", "ios"):
+            return "mobile"
+        if raw_s in ("web", "backend", "frontend", "fullstack"):
+            return "web"
+        if raw_s in ("ui", "ux", "uiux", "design"):
+            return "uiux"
+        try:
+            tag_str = " ".join([str(x).lower() for x in (tags or [])])
+            if "mobile" in tag_str:
+                return "mobile"
+            if "ui" in tag_str or "ux" in tag_str or "design" in tag_str:
+                return "uiux"
+            if "web" in tag_str or "backend" in tag_str or "frontend" in tag_str:
+                return "web"
+        except Exception:
+            pass
+        return None
+
+    def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
         if user.is_staff:
             return qs
         try:
             user_projects = user.project_set.all()
-            return qs.filter(
-                Q(created_by=user) | Q(assignee=user) | Q(project__in=user_projects)
-            ).distinct()
+            return qs.filter(Q(created_by=user) | Q(assignee=user) | Q(project__in=user_projects)).distinct()
         except Exception:
             return qs.filter(Q(created_by=user) | Q(assignee=user)).distinct()
 
     def perform_create(self, serializer):
-        """
-        Save TaskAI and try to auto-assign immediately (synchronously).
-        Do NOT auto-assign if an assignee already exists or ai_suggested is True.
-        """
         task = serializer.save()
         try:
             already_assigned = getattr(task, "assignee", None) is not None
@@ -167,34 +242,19 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             if not already_assigned and not already_ai_suggested:
                 self._auto_assign_task_instance(task)
             else:
-                logger.debug("Skipping auto-assign: already_assigned=%s, ai_suggested=%s", already_assigned, already_ai_suggested)
+                logger.debug("Skipping auto-assign: assigned=%s ai_suggested=%s", already_assigned, already_ai_suggested)
         except Exception:
             logger.exception("Auto-assign on create failed (continuing)")
 
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def assign(self, request, pk=None):
-        """
-        Robust assign endpoint:
-         - permission: staff OR task.created_by (or authenticated if task.created_by is None)
-         - blocks reassignment if task assignment is locked (ai_suggested/assignment_locked) unless staff or force=true
-         - accepts assignee_id as either User.pk or Member.pk (Member -> .user)
-         - uses QuerySet.update() to perform direct DB write (more robust)
-         - creates a timesheet.Notification row synchronously (if model exists)
-        """
         task = self.get_object()
-
-        # Permission
-        allowed = (
-            request.user.is_staff
-            or (task.created_by is not None and task.created_by == request.user)
-            or (task.created_by is None and request.user.is_authenticated)
-        )
+        allowed = request.user.is_staff or (task.created_by is not None and task.created_by == request.user) or (task.created_by is None and request.user.is_authenticated)
         if not allowed:
             return Response({"detail": "Not allowed. Only staff or the task creator may assign tasks."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Locked check
         locked = bool(getattr(task, "assignment_locked", False)) or bool(getattr(task, "ai_suggested", False))
-        force_override = bool(request.data.get("force", False))
+        force_override = self._as_bool(request.data.get("force", False))
         if locked and not request.user.is_staff and not force_override:
             return Response({"detail": "Task is locked from reassignment (AI-assigned). Contact staff to override."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -202,18 +262,17 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         if not assignee_id:
             return Response({"detail": "assignee_id required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Resolve assignee: try User(pk=...) first then Member(pk=...)->user
         assignee = None
         try:
             assignee = User.objects.get(pk=assignee_id)
         except Exception:
             try:
-                Member = apps.get_model("members", "Member")
+                MemberModel = apps.get_model("members", "Member")
             except Exception:
-                Member = None
-            if Member is not None:
+                MemberModel = None
+            if MemberModel is not None:
                 try:
-                    member = Member.objects.select_related("user").filter(pk=assignee_id).first()
+                    member = MemberModel.objects.select_related("user").filter(pk=assignee_id).first()
                     if member and getattr(member, "user", None):
                         assignee = member.user
                 except Exception:
@@ -222,17 +281,11 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         if not assignee:
             return Response({"detail": "assignee not found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Build update values
         now = timezone.now()
-        update_values = {
-            "assignee_id": assignee.pk,
-            "assigned_by_id": request.user.pk,
-            "assigned_at": now,
-        }
+        update_values = {"assignee_id": assignee.pk, "assigned_by_id": request.user.pk, "assigned_at": now}
 
-        # handle optional ai metadata passed from client
         if "ai_suggested" in request.data:
-            update_values["ai_suggested"] = bool(request.data.get("ai_suggested"))
+            update_values["ai_suggested"] = self._as_bool(request.data.get("ai_suggested"))
         if "ai_confidence" in request.data:
             try:
                 update_values["ai_confidence"] = int(request.data.get("ai_confidence")) if request.data.get("ai_confidence") is not None else None
@@ -243,38 +296,29 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         if "ai_meta" in request.data:
             update_values["ai_meta"] = request.data.get("ai_meta")
 
-        # If staff forced override and assignment_locked exists, clear it in update
-        if request.user.is_staff and force_override:
+        if request.user.is_staff and self._as_bool(request.data.get("force", False)):
             if hasattr(task, "assignment_locked"):
                 update_values["assignment_locked"] = False
             else:
                 update_values["ai_suggested"] = False
 
-        # If assignment was AI suggested or we mark it as such, lock it
-        if request.data.get("ai_suggested") or bool(getattr(task, "ai_suggested", False)):
+        if self._as_bool(request.data.get("ai_suggested", False)) or bool(getattr(task, "ai_suggested", False)):
             if hasattr(task, "assignment_locked"):
                 update_values["assignment_locked"] = True
 
         try:
-            # Perform direct DB update
             TaskAI.objects.filter(pk=task.pk).update(**update_values)
             logger.info("Assign update: task %s set assignee_id=%s by user %s", task.pk, assignee.pk, request.user.pk)
         except Exception:
             logger.exception("Assign update failed for task %s", task.pk)
             return Response({"detail": "Failed to persist assignment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Refresh canonical task instance
         fresh = TaskAI.objects.filter(pk=task.pk).select_related("assignee", "assigned_by").first()
 
-        # Create notification (timesheet.Notification) if available
         try:
             Notification = apps.get_model("timesheet", "Notification")
             try:
-                Notification.objects.create(
-                    recipient_id=fresh.assignee_id,
-                    verb=f"You have been assigned to task: {fresh.title or fresh.pk}",
-                    task_id=fresh.pk,
-                )
+                Notification.objects.create(recipient_id=fresh.assignee_id, verb=f"You have been assigned to task: {fresh.title or fresh.pk}", task_id=fresh.pk)
                 logger.info("Notification created for user %s about task %s", fresh.assignee_id, fresh.pk)
             except Exception:
                 logger.exception("Failed creating Notification row for task %s", fresh.pk)
@@ -286,38 +330,28 @@ class TaskAIViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def my(self, request):
-        """
-        Return tasks the user created OR tasks assigned to the user (so members can review assigned tasks).
-        Also include AI-suggested tasks that reference a Member row which maps to this user (inspect ai_meta).
-        """
         user = request.user
-
-        # Base queryset (fast DB lookup for created_by or direct assignee)
         qs = self.get_queryset().filter(Q(created_by=user) | Q(assignee=user)).distinct()
 
-        # Try to append AI-suggested tasks that reference a Member that maps to this user
         extra_task_pks = []
         try:
-            Member = apps.get_model("members", "Member")
+            MemberModel = apps.get_model("members", "Member")
         except Exception:
-            Member = None
+            MemberModel = None
 
-        if Member is not None:
+        if MemberModel is not None:
             try:
-                user_member = Member.objects.filter(user=user).first()
+                user_member = MemberModel.objects.filter(user=user).first()
             except Exception:
                 user_member = None
 
             if user_member:
-                # Limit scanning to a reasonable slice to avoid heavy DB operation
                 candidate_qs = TaskAI.objects.filter(ai_suggested=True).exclude(pk__in=qs.values_list("pk", flat=True))[:1000]
-
                 for t in candidate_qs:
                     meta = getattr(t, "ai_meta", None) or {}
                     chosen = None
                     if isinstance(meta, dict):
                         chosen = meta.get("chosen") or meta.get("selection") or None
-
                     mid = None
                     if isinstance(chosen, dict):
                         mid = chosen.get("memberId") or chosen.get("member_id") or None
@@ -325,18 +359,14 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                             raw = chosen.get("meta") or chosen.get("meta_raw") or chosen.get("raw")
                             if isinstance(raw, dict):
                                 mid = raw.get("member_pk") or raw.get("memberId") or raw.get("id") or None
-
                     if not mid and isinstance(meta, dict):
                         mid = meta.get("member_pk") or meta.get("chosen_member_pk") or None
-
                     if mid is not None and str(mid) == str(getattr(user_member, "pk", "")):
                         extra_task_pks.append(t.pk)
 
-        # If we found extras, union them into qs
         if extra_task_pks:
             qs = qs | TaskAI.objects.filter(pk__in=extra_task_pks)
 
-        # paginate + return
         page = self.paginate_queryset(qs.distinct())
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -344,7 +374,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs.distinct(), many=True)
         return Response(serializer.data)
 
-    # Auto-assign action for frontend use
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="auto-assign")
     def auto_assign(self, request):
         tasks = request.data.get("tasks") or []
@@ -354,6 +383,9 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Too many tasks; limit is 25 per request."}, status=status.HTTP_400_BAD_REQUEST)
 
         candidates = _get_candidate_members(limit=getattr(settings, "OPENAI_MAX_CANDIDATES", 200))
+        logger.debug("Auto-assign invoked: %d tasks, %d distinct candidates", len(tasks), len(candidates))
+
+        run_assigned_counts = {}
 
         # fallback deterministic suggestions if OpenAI not configured
         if not OPENAI_AVAILABLE or not getattr(settings, "OPENAI_API_KEY", None):
@@ -362,46 +394,18 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 for t in tasks:
                     out.append({"taskId": t.get("id"), "memberId": None, "memberName": None, "confidence": 0, "reason": "No candidates available on server."})
                 return Response(out, status=status.HTTP_200_OK)
-
-            for i, t in enumerate(tasks):
-                req_dev_type = t.get("developer_type") or t.get("required_developer_type") or None
-                if not req_dev_type:
-                    pt = (t.get("project_type") or "") or ""
-                    pt = str(pt).lower()
-                    if "mobile" in pt:
-                        req_dev_type = "mobile"
-                    elif "ui" in pt or "ux" in pt:
-                        req_dev_type = "uiux"
-                    elif "web" in pt or "backend" in pt or "frontend" in pt:
-                        req_dev_type = "web"
-
+            for t in tasks:
+                req_dev_type = self.infer_task_dev_type(t)
                 chosen = self._choose_candidate_fallback({
                     "required_skills": t.get("required_skills") or t.get("skills") or t.get("tags") or [],
                     "required_developer_type": req_dev_type,
                     "min_experience": t.get("min_experience") or t.get("minimum_experience")
-                }, candidates)
-                out.append({
-                    "taskId": t.get("id"),
-                    "memberId": chosen.get("memberId"),
-                    "memberName": chosen.get("memberName"),
-                    "confidence": chosen.get("confidence"),
-                    "reason": chosen.get("reason"),
-                })
+                }, candidates, assigned_counts=run_assigned_counts)
+                out.append({"taskId": t.get("id"), "memberId": chosen.get("memberId"), "memberName": chosen.get("memberName"), "confidence": chosen.get("confidence"), "reason": chosen.get("reason")})
+                mid = chosen.get("memberId")
+                if mid is not None:
+                    run_assigned_counts[str(mid)] = run_assigned_counts.get(str(mid), 0) + 1
             return Response(out, status=status.HTTP_200_OK)
-
-        # Build payload and call OpenAI if configured
-        def infer_task_dev_type(t):
-            dt = t.get("developer_type") or t.get("required_developer_type") or None
-            if dt:
-                return dt
-            pt = str((t.get("project_type") or "")).lower()
-            if "mobile" in pt:
-                return "mobile"
-            if "ui" in pt or "ux" in pt:
-                return "uiux"
-            if "web" in pt or "backend" in pt or "frontend" in pt:
-                return "web"
-            return None
 
         payload = {
             "tasks": [
@@ -415,24 +419,16 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                     "priority": t.get("priority") or "",
                     "deadline": str(t.get("deadline")) if t.get("deadline") else "",
                     "hours": t.get("hours") or 0,
-                    "required_developer_type": infer_task_dev_type(t),
+                    "required_developer_type": self.infer_task_dev_type(t),
                     "required_skills": t.get("required_skills") or t.get("skills") or t.get("tags") or [],
                 } for t in tasks
             ],
-            # include a compact candidate list (id, name, skills, experience, developer_type)
             "candidates": [
-                {
-                    "id": c.get("id"),
-                    "user_id": c.get("user_id"),
-                    "name": c.get("name"),
-                    "skills": c.get("skills"),
-                    "experience": c.get("experience"),
-                    "developer_type": c.get("developer_type")
-                } for c in candidates[: getattr(settings, "OPENAI_MAX_CANDIDATES", 200)]
+                {"id": c.get("id"), "user_id": c.get("user_id"), "name": c.get("name"), "skills": c.get("skills"), "experience": c.get("experience"), "developer_type": c.get("developer_type")}
+                for c in candidates[: getattr(settings, "OPENAI_MAX_CANDIDATES", 200)]
             ]
         }
 
-        # Strong instruction: choose one memberId from the provided candidates for each task.
         system_msg = "You are an assistant that returns ONLY valid JSON. No additional explanation."
         user_msg = (
             "You are given a list of tasks and a list of candidate members. "
@@ -449,6 +445,8 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             "- memberId MUST be one of the candidate ids supplied for this request.\n"
             "- Confidence is 0-100 and must reflect your relative certainty.\n"
             "- Keep 'reason' short (one sentence).\n\n"
+            "Additional rule: If multiple candidates are suitable across tasks, try to distribute assignments rather than picking the same person for every task. "
+            "Do not return the exact same memberId for more than 3 tasks in this request unless they are clearly the only best fit.\n\n"
             f"Input payload:\n{json.dumps(payload)}"
         )
 
@@ -457,10 +455,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             model = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
             resp = openai.ChatCompletion.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": user_msg},
-                ],
+                messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
                 temperature=0.0,
                 max_tokens=getattr(settings, "OPENAI_MAX_TOKENS", 800),
             )
@@ -470,7 +465,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.error("Auto-assign: failed to parse model output: %s", raw)
                 return Response({"detail": "Failed to parse model response"}, status=status.HTTP_502_BAD_GATEWAY)
 
-            # Validate parsed shape: must be list with entries mapping to tasks and memberId must be in candidate ids
             candidate_ids = {str(c.get("id")) for c in payload.get("candidates", []) if c.get("id") is not None}
             output = []
             for item in parsed:
@@ -482,16 +476,14 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 confidence = item.get("confidence")
                 reason = item.get("reason")
 
-                # allow ints/strings but coerce to string for membership check
                 if memberId is None or str(memberId) not in candidate_ids:
-                    # If model returned invalid memberId, attempt to fallback to deterministic choice for that task
                     logger.warning("OpenAI returned invalid memberId for task %s: %s", taskId, memberId)
-                    # find original task payload to pass to fallback
                     orig_task = next((t for t in payload["tasks"] if str(t.get("taskId")) == str(taskId)), None)
                     fallback_choice = self._choose_candidate_fallback({
                         "required_skills": orig_task.get("required_skills") if orig_task else [],
                         "required_developer_type": orig_task.get("required_developer_type") if orig_task else None
-                    }, candidates)
+                    }, candidates, assigned_counts=run_assigned_counts)
+                    fallback_choice.setdefault("meta", {}).update({"raw_openai": raw, "parsed_openai": parsed})
                     output.append({
                         "taskId": taskId,
                         "memberId": fallback_choice.get("memberId"),
@@ -499,64 +491,37 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                         "confidence": fallback_choice.get("confidence"),
                         "reason": (fallback_choice.get("reason") or "fallback due to invalid OpenAI selection"),
                     })
+                    mid = fallback_choice.get("memberId")
+                    if mid is not None:
+                        run_assigned_counts[str(mid)] = run_assigned_counts.get(str(mid), 0) + 1
                     continue
 
-                output.append({
-                    "taskId": taskId,
-                    "memberId": memberId,
-                    "memberName": memberName,
-                    "confidence": confidence,
-                    "reason": reason,
-                })
+                output.append({"taskId": taskId, "memberId": memberId, "memberName": memberName, "confidence": confidence, "reason": reason})
+                run_assigned_counts[str(memberId)] = run_assigned_counts.get(str(memberId), 0) + 1
+
             return Response(output, status=status.HTTP_200_OK)
-        except Exception as exc:
-            logger.exception("Auto-assign failure")
-            # fallback deterministic when OpenAI fails
+        except Exception:
+            logger.exception("Auto-assign failure - falling back deterministic")
             out = []
             if not candidates:
                 for t in tasks:
                     out.append({"taskId": t.get("id"), "memberId": None, "memberName": None, "confidence": 0, "reason": "No candidates available on server."})
                 return Response(out, status=status.HTTP_200_OK)
-
             for t in tasks:
-                req_dev_type = t.get("developer_type") or t.get("required_developer_type") or None
-                if not req_dev_type:
-                    pt = (t.get("project_type") or "") or ""
-                    pt = str(pt).lower()
-                    if "mobile" in pt:
-                        req_dev_type = "mobile"
-                    elif "ui" in pt or "ux" in pt:
-                        req_dev_type = "uiux"
-                    elif "web" in pt or "backend" in pt or "frontend" in pt:
-                        req_dev_type = "web"
-
+                req_dev_type = self.infer_task_dev_type(t)
                 chosen = self._choose_candidate_fallback({
                     "required_skills": t.get("required_skills") or t.get("skills") or t.get("tags") or [],
                     "required_developer_type": req_dev_type,
                     "min_experience": t.get("min_experience") or t.get("minimum_experience")
-                }, candidates)
-                out.append({
-                    "taskId": t.get("id"),
-                    "memberId": chosen.get("memberId"),
-                    "memberName": chosen.get("memberName"),
-                    "confidence": chosen.get("confidence"),
-                    "reason": chosen.get("reason"),
-                })
+                }, candidates, assigned_counts=run_assigned_counts)
+                out.append({"taskId": t.get("id"), "memberId": chosen.get("memberId"), "memberName": chosen.get("memberName"), "confidence": chosen.get("confidence"), "reason": chosen.get("reason")})
+                mid = chosen.get("memberId")
+                if mid is not None:
+                    run_assigned_counts[str(mid)] = run_assigned_counts.get(str(mid), 0) + 1
             return Response(out, status=status.HTTP_200_OK)
 
-    # ---------------- scoring & chooser ----------------
+    # scoring and chooser
     def _score_candidate(self, task_payload: dict, cand: dict):
-        """
-        Improved scoring:
-         - skills weight: 50
-         - experience weight: 30
-         - developer_type match: 20 (plus bonus if devType matches)
-         - additional small experience bonus for >5yrs
-        Special behavior:
-         - If there are NO skill matches but the candidate matches developer_type AND has >=5 years experience,
-           we give a stronger score (allow assignment even when skills are missing).
-        Returns (score:int, reason:str)
-        """
         def toks(x):
             if not x:
                 return []
@@ -566,156 +531,230 @@ class TaskAIViewSet(viewsets.ModelViewSet):
 
         task_skills = toks(task_payload.get("required_skills") or task_payload.get("skills") or task_payload.get("tags") or [])
         cand_skills = toks(cand.get("skills") or cand.get("skill") or "")
-        needed = max(1, len(task_skills))  # don't divide by zero
-
+        needed = max(1, len(task_skills))
         overlap = 0
         if task_skills:
             overlap = sum(1 for s in task_skills if s in cand_skills)
-        # Skill score: proportion of required skills matched scaled to 50
-        skill_score = (overlap / needed) * 50 if task_skills else 0
 
-        # Experience score: up to 30 points, capping experience at 20yrs
+        # skill score (cap)
+        skill_score = min(60, (overlap * 15))
         try:
             member_exp = float(cand.get("experience") or 0)
         except Exception:
             member_exp = 0.0
         capped = max(0.0, min(20.0, member_exp))
-        experience_score = (capped / 20.0) * 30.0
+        experience_score = (capped / 20.0) * 25.0
 
-        # Developer type match score (20 if matches)
         req_dev = (task_payload.get("required_developer_type") or task_payload.get("developer_type") or "") or ""
         cand_dev = (cand.get("developer_type") or cand.get("dev_type") or "") or ""
-        dev_score = 20 if (str(req_dev).strip() and str(cand_dev).strip() and str(req_dev).lower() == str(cand_dev).lower()) else 0
+        dev_score = 15 if (str(req_dev).strip() and str(cand_dev).strip() and str(req_dev).lower() == str(cand_dev).lower()) else 0
 
-        # Additional experience bonus for seniority
         exp_bonus = 5 if member_exp >= 8 else (3 if member_exp >= 5 else 0)
 
-        # Special rule: if there are NO task skills specified, reward experience/dev match more (don't penalize)
-        if not task_skills:
-            # reweight: move skill weight into experience/dev
-            experience_score = min(30, experience_score + 10)  # give extra weight to experience
-            skill_score = 0
-
-        # NEW: If there is zero skill overlap, but developer type matches and experience is substantial (>=5),
-        # allow assigning by boosting score to a reasonable level so fallback chooser will pick them.
         special_case_applied = False
-        if task_skills and overlap == 0 and dev_score > 0 and member_exp >= 5:
-            # Give a healthy score so candidate can be chosen despite no skill overlap.
-            special_case_applied = True
-            experience_score = max(experience_score, 25.0)  # ensure a reasonable experience floor
+        if task_skills and overlap == 0:
+            if dev_score > 0 and member_exp >= 5:
+                special_case_applied = True
+                experience_score = max(experience_score, 18.0)
+            else:
+                experience_score = max(0.0, experience_score - 10.0)
 
-        total = int(round(max(0, min(100, skill_score + experience_score + dev_score + exp_bonus))))
-        reason_parts = []
-        reason_parts.append(f"skills overlap {overlap}/{needed}")
-        reason_parts.append(f"exp {member_exp}yr (+{exp_bonus} bonus)")
-        reason_parts.append(f"devType match: {'yes' if dev_score>0 else 'no'}")
+        base_total = int(round(max(0, min(100, skill_score + experience_score + dev_score + exp_bonus))))
+
+        try:
+            cur_load = int(cand.get("current_load") or 0)
+        except Exception:
+            cur_load = 0
+        load_penalty = min(20, cur_load * 5)
+        total = max(0, base_total - load_penalty)
+        reason_parts = [f"skills {overlap}/{needed}", f"exp {member_exp}yr", f"devType:{'yes' if dev_score>0 else 'no'}", f"load:{cur_load}(-{load_penalty})"]
         if special_case_applied:
-            reason_parts.append("special: no skills but devType+exp match -> allowed")
+            reason_parts.append("special: devType+exp fallback")
         reason = "; ".join(reason_parts)
-        return total, reason
+        return total, reason, overlap
 
-    def _choose_candidate_fallback(self, task_payload: dict, candidates: list):
+    def _choose_candidate_fallback(self, task_payload: dict, candidates: list, assigned_counts: dict = None):
         """
-        Pick the top candidate by _score_candidate and return dict with meta.
-        Will always return the best candidate (no strict rejection).
+        Non-deterministic fallback:
+        - score candidates
+        - take top candidates within score window (default 3 points)
+        - further prefer candidates with the smallest current_load and smallest assigned_counts
+        - randomly pick among the best subset to avoid always picking the same member
         """
-        best = None
+        if assigned_counts is None:
+            assigned_counts = {}
+
+        scored = []
         for cand in candidates:
-            score, reason = self._score_candidate(task_payload, cand)
-            if best is None or score > best["confidence"]:
-                best = {
-                    "memberId": cand.get("id"),
-                    "memberName": cand.get("name") or cand.get("username") or cand.get("user_name"),
-                    "confidence": score,
-                    "reason": reason,
-                    "meta": cand,
-                }
-        if best is None:
+            score, reason, overlap = self._score_candidate(task_payload, cand)
+            prior = assigned_counts.get(str(cand.get("id")), 0)
+            run_penalty = prior * 8  # stronger penalty so run diversity matters
+            adjusted = max(0, score - run_penalty)
+            scored.append({"candidate": cand, "score": score, "adjusted": adjusted, "reason": reason, "overlap": overlap})
+
+        if not scored:
             return {"memberId": None, "memberName": None, "confidence": 0, "reason": "No candidates"}
-        # Ensure memberId is present (coerce to int/str as present in candidate)
-        if best.get("memberId") is None and candidates:
-            c = candidates[0]
-            best["memberId"] = c.get("id")
-            best["memberName"] = c.get("name") or c.get("username")
-            best["reason"] = f"forced pick {best['memberName']} due to no scoring result"
-            best["confidence"] = best.get("confidence") or 0
-        return best
+
+        # primary sort by adjusted desc, overlap desc, experience desc
+        def keyfn(item):
+            exp = float(item["candidate"].get("experience") or 0)
+            return (-item["adjusted"], -item["overlap"], -exp, int(item["candidate"].get("id") or 0))
+
+        scored.sort(key=keyfn)
+        best = scored[0]
+        top_score = best["adjusted"]
+
+        # build top group: within 3 points AND not massively penalized by load
+        top_group = [s for s in scored if (top_score - s["adjusted"]) <= 3]
+        # further filter by minimal current_load
+        if top_group:
+            min_load = min(int(s["candidate"].get("current_load") or 0) for s in top_group)
+            top_group = [s for s in top_group if int(s["candidate"].get("current_load") or 0) == min_load] or top_group
+
+        # further prefer those with smaller assigned_counts in this run
+        if top_group:
+            min_assigned = min(assigned_counts.get(str(s["candidate"].get("id")), 0) for s in top_group)
+            top_group = [s for s in top_group if assigned_counts.get(str(s["candidate"].get("id")), 0) == min_assigned] or top_group
+
+        # Randomly choose one from top_group to avoid deterministic bias
+        chosen_item = random.choice(top_group) if len(top_group) > 1 else best
+        cand = chosen_item["candidate"]
+
+        # Ensure cand.id exists
+        if cand.get("id") is None:
+            # forced pick
+            if candidates:
+                cand = candidates[0]
+                return {"memberId": cand.get("id"), "memberName": cand.get("name") or cand.get("username"), "confidence": 0, "reason": "forced pick due to missing id", "meta": cand}
+            return {"memberId": None, "memberName": None, "confidence": 0, "reason": "No candidates"}
+
+        conf = int(max(0, min(100, chosen_item["adjusted"])))
+        return {"memberId": cand.get("id"), "memberName": cand.get("name") or cand.get("username") or cand.get("user_name"), "confidence": conf, "reason": chosen_item["reason"], "meta": cand}
 
     def _choose_candidate_openai(self, task_payload: dict, candidates: list):
         """
-        Ask OpenAI to pick a candidate for a single task (same interface as fallback).
-        Validation: ensures returned memberId exists in provided candidates.
+        Same robust OpenAI handling as before; if model returns null/invalid memberId we fall back to the
+        non-deterministic chooser above.
         """
         if not OPENAI_AVAILABLE or not getattr(settings, "OPENAI_API_KEY", None):
-            raise RuntimeError("OpenAI not available/configured")
+            return self._choose_candidate_fallback(task_payload, candidates)
 
-        openai.api_key = getattr(settings, "OPENAI_API_KEY", None)
-        model = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
-        max_tokens = getattr(settings, "OPENAI_MAX_TOKENS", 400)
+        try:
+            openai.api_key = getattr(settings, "OPENAI_API_KEY", None)
+            model = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
+            max_tokens = getattr(settings, "OPENAI_MAX_TOKENS", 400)
+            payload = {"task": {"taskId": task_payload.get("taskId") or task_payload.get("id"), "title": task_payload.get("title") or "", "desc": task_payload.get("web_desc") or task_payload.get("description") or "", "required_developer_type": task_payload.get("required_developer_type") or task_payload.get("developer_type") or None, "required_skills": task_payload.get("required_skills") or task_payload.get("skills") or task_payload.get("tags") or [], "priority": task_payload.get("priority") or ""}, "candidates": candidates[: getattr(settings, "OPENAI_MAX_CANDIDATES", 200)]}
+            system_msg = "You are an assistant that returns ONLY valid JSON. No commentary."
+            user_msg = ("Given one task and a list of candidate members (with id, name, skills, experience, developer_type), choose the most suitable member and return JSON: " '{"memberId": <id|null>, "memberName": <string|null>, "confidence": <0-100>, "reason": <short explanation> }' "Important: memberId MUST be exactly one of the ids present in the provided 'candidates' array. Return memberId as a plain integer (not words). If you cannot pick one of the candidate ids, set memberId to null and include an explanation in 'reason'.\n\nExample output (single object):\n" '{"memberId": 5, "memberName": "Alice Doe", "confidence": 78, "reason": "Matches skills X,Y and developer_type web."}\n\n' f"Input:\n{json.dumps(payload)}")
+            resp = openai.ChatCompletion.create(model=model, messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}], temperature=0.0, max_tokens=max_tokens)
+            raw = resp["choices"][0]["message"]["content"]
+            parsed = _extract_json_from_text(raw)
+        except Exception:
+            logger.exception("OpenAI request/parse failed; falling back deterministically")
+            return self._choose_candidate_fallback(task_payload, candidates)
 
-        payload = {
-            "task": {
-                "taskId": task_payload.get("taskId") or task_payload.get("id"),
-                "title": task_payload.get("title") or "",
-                "desc": task_payload.get("web_desc") or task_payload.get("description") or "",
-                "required_developer_type": task_payload.get("required_developer_type") or task_payload.get("developer_type") or None,
-                "required_skills": task_payload.get("required_skills") or task_payload.get("skills") or task_payload.get("tags") or [],
-                "priority": task_payload.get("priority") or "",
-            },
-            "candidates": candidates[: getattr(settings, "OPENAI_MAX_CANDIDATES", 200)]
-        }
+        meta = {"raw": raw, "parsed": parsed}
+        obj = None
+        if isinstance(parsed, list) and parsed:
+            obj = parsed[0]
+        elif isinstance(parsed, dict):
+            obj = parsed
+        else:
+            obj = None
 
-        system_msg = "You are an assistant that returns ONLY valid JSON. No commentary."
-        user_msg = (
-            "Given one task and a list of candidate members (with id, name, skills, experience, developer_type), "
-            "choose the most suitable member and return JSON: "
-            '{"memberId": <id|null>, "memberName": <string|null>, "confidence": <0-100>, "reason": <short explanation> }\n\n'
-            "Important: You MUST choose a memberId that exists in the provided 'candidates' list. "
-            "Do not invent IDs. If no clear match exists, choose the candidate with the highest experience. "
-            "If a candidate has no skill overlap but does match developer_type and has >=5 years experience, you MAY choose them — state this explicitly.\n\n"
-            f"Input:\n{json.dumps(payload)}"
-        )
+        memberId = None
+        memberName = None
+        confidence = 0
+        reason = ""
+        if obj and isinstance(obj, dict):
+            memberId = obj.get("memberId") or obj.get("member_id") or obj.get("id")
+            memberName = obj.get("memberName") or obj.get("member_name") or obj.get("name")
+            confidence = obj.get("confidence") or obj.get("score") or 0
+            reason = obj.get("reason") or obj.get("explanation") or ""
 
-        resp = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.0,
-            max_tokens=max_tokens,
-        )
-        raw = resp["choices"][0]["message"]["content"]
-        parsed = _extract_json_from_text(raw)
-        if not parsed:
-            raise RuntimeError(f"OpenAI returned unparsable response: {raw}")
+        # normalize memberId
+        if memberId is not None:
+            try:
+                if isinstance(memberId, str) and memberId.isdigit():
+                    memberId = int(memberId)
+                elif isinstance(memberId, (int, float)):
+                    memberId = int(memberId)
+                else:
+                    m = re.search(r"(\d+)", str(memberId))
+                    if m:
+                        memberId = int(m.group(1))
+                    else:
+                        memberId = None
+            except Exception:
+                memberId = None
 
-        # Accept list or single object
-        obj = parsed[0] if isinstance(parsed, list) and parsed else parsed if isinstance(parsed, dict) else None
-        if not obj:
-            raise RuntimeError("OpenAI did not return object result")
-
-        # Validate memberId is among candidates
         candidate_ids = {str(c.get("id")) for c in candidates if c.get("id") is not None}
-        mid = obj.get("memberId") or obj.get("member_id") or obj.get("id")
-        if mid is None or str(mid) not in candidate_ids:
-            raise RuntimeError(f"OpenAI returned invalid memberId: {mid}; must be one of {candidate_ids}")
+        resolved_candidate = None
+        resolution_path = []
+        if memberId is None or str(memberId) not in candidate_ids:
+            resolution_path.append("memberId_missing_or_invalid")
+            if memberName:
+                mname = str(memberName).strip().lower()
+                for c in candidates:
+                    try:
+                        cand_names = [str(c.get("name") or "").strip().lower(), str(c.get("username") or "").strip().lower(), str(c.get("email") or "").strip().lower()]
+                    except Exception:
+                        cand_names = [str(c.get("name") or "").strip().lower()]
+                    if any(mname == cn and cn for cn in cand_names):
+                        resolved_candidate = c
+                        resolution_path.append(f"exact_name_match:{c.get('id')}")
+                        break
+                if not resolved_candidate:
+                    for c in candidates:
+                        try:
+                            cn = str(c.get("name") or "").strip().lower()
+                        except Exception:
+                            cn = ""
+                        if cn and (mname in cn or cn in mname):
+                            resolved_candidate = c
+                            resolution_path.append(f"fuzzy_name_match:{c.get('id')}")
+                            break
+            if not resolved_candidate:
+                m = re.search(r"\b(\d{1,6})\b", raw or "")
+                if m:
+                    cand_id_guess = m.group(1)
+                    if cand_id_guess in candidate_ids:
+                        for c in candidates:
+                            if str(c.get("id")) == cand_id_guess:
+                                resolved_candidate = c
+                                resolution_path.append(f"raw_text_id_extract:{cand_id_guess}")
+                                break
+            if not resolved_candidate and memberName:
+                parts = [p.strip() for p in re.split(r"[\s,_\-\.\@]+", memberName) if p.strip()]
+                for p in parts:
+                    for c in candidates:
+                        try:
+                            if str(c.get("username") or "").lower().find(p.lower()) != -1 or str(c.get("email") or "").lower().find(p.lower()) != -1:
+                                resolved_candidate = c
+                                resolution_path.append(f"fragment_match:{p}:{c.get('id')}")
+                                break
+                        except Exception:
+                            continue
+                    if resolved_candidate:
+                        break
 
-        # attempt to find the candidate dict for meta
-        chosen_candidate = next((c for c in candidates if str(c.get("id")) == str(mid)), None)
+        if resolved_candidate:
+            chosen = {"memberId": int(resolved_candidate.get("id")) if resolved_candidate.get("id") is not None else None, "memberName": resolved_candidate.get("name") or resolved_candidate.get("username"), "confidence": int(confidence) if confidence is not None else 0, "reason": (reason or "resolved from memberName/raw output") + f" (resolution path: {resolution_path})", "meta": {"parsed": parsed, "raw": raw, "resolution_path": resolution_path, "candidate": resolved_candidate}}
+            return chosen
 
-        return {
-            "memberId": mid,
-            "memberName": obj.get("memberName") or obj.get("member_name") or (chosen_candidate and chosen_candidate.get("name")),
-            "confidence": int(obj.get("confidence") or obj.get("score") or 0),
-            "reason": obj.get("reason") or obj.get("explanation") or "",
-            "meta": {"raw": raw, "parsed": obj, "candidate": chosen_candidate},
-        }
+        if memberId is not None and str(memberId) in candidate_ids:
+            chosen_candidate = next((c for c in candidates if str(c.get("id")) == str(memberId)), None)
+            return {"memberId": int(memberId), "memberName": memberName or (chosen_candidate and chosen_candidate.get("name")), "confidence": int(confidence) if confidence is not None else 0, "reason": reason or "openai selection", "meta": {"parsed": parsed, "raw": raw, "candidate": chosen_candidate}}
 
-    # Resolve candidate to auth.User conservatively (aggressive heuristics kept)
+        logger.warning("OpenAI returned no valid memberId and resolution failed. Raw model output: %s", raw)
+        fallback = self._choose_candidate_fallback(task_payload, candidates)
+        fallback["meta"] = fallback.get("meta", {})
+        fallback["meta"].update({"raw_openai": raw, "parsed_openai": parsed, "resolution_attempts": resolution_path})
+        fallback["reason"] = (fallback.get("reason") or "") + " (fallback after OpenAI no-valid-id)"
+        return fallback
+
     def _resolve_candidate_to_user(self, chosen_member_id, chosen_member_name, candidates):
         diag = {"chosen_member_id": chosen_member_id, "chosen_member_name": chosen_member_name, "steps": []}
-        # 0) scan candidate entry for user_id
         for c in (candidates or []):
             try:
                 if c.get("id") is not None and chosen_member_id is not None and str(c.get("id")) == str(chosen_member_id):
@@ -731,7 +770,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.exception("resolve step candidate entry failed")
                 diag["steps"].append("exception in candidate entry step")
 
-        # 1) try direct User(pk=chosen_member_id)
         if chosen_member_id is not None:
             try:
                 diag["steps"].append(f"trying User(pk={chosen_member_id})")
@@ -743,15 +781,14 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.exception("resolve step direct user pk failed")
                 diag["steps"].append("exception in direct pk step")
 
-        # 2) try Member(pk=chosen_member_id).user
         try:
-            Member = apps.get_model("members", "Member")
+            MemberModel = apps.get_model("members", "Member")
         except Exception:
-            Member = None
-        if Member and chosen_member_id is not None:
+            MemberModel = None
+        if MemberModel and chosen_member_id is not None:
             try:
                 diag["steps"].append(f"trying Member(pk={chosen_member_id}).user")
-                member = Member.objects.filter(pk=chosen_member_id).select_related("user").first()
+                member = MemberModel.objects.filter(pk=chosen_member_id).select_related("user").first()
                 if member and getattr(member, "user", None):
                     diag["resolved_by"] = "member.user_by_pk"
                     return member.user, diag
@@ -761,7 +798,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.exception("resolve step Member.pk failed")
                 diag["steps"].append("exception in member.pk step")
 
-        # 3) scan all candidate entries for 'user_id'
         for c in (candidates or []):
             try:
                 uid = c.get("user_id") or (c.get("user") and c.get("user").get("id"))
@@ -775,7 +811,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.exception("resolve step scanning candidates failed")
                 diag["steps"].append("exception scanning candidates")
 
-        # 4) try exact username/email match
         if chosen_member_name:
             try:
                 uname = str(chosen_member_name).strip()
@@ -790,8 +825,8 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                     return u, diag
             except Exception:
                 logger.exception("resolve step exact match failed")
+                diag["steps"].append("exception in exact match")
 
-        # 5) fuzzy username contains
         if chosen_member_name:
             parts = [p.strip() for p in re.split(r"[\s,_\-\.\s]+", chosen_member_name) if p.strip()]
             for p in parts:
@@ -805,16 +840,16 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                         return u, diag
                 except Exception:
                     logger.exception("resolve step fuzzy contains failed")
+                    diag["steps"].append("exception in username icontains")
 
         diag["steps"].append("no resolution found")
         return None, diag
-    
+
     @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="stats")
-    
     def stats(self, request):
         total_created = TaskAI.objects.filter(created_by=request.user).count()
         return Response({"total_created": total_created}, status=status.HTTP_200_OK)
-    
+
     @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="created")
     def created(self, request):
         qs = TaskAI.objects.filter(created_by=request.user).order_by("-created_at")
@@ -825,12 +860,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
     def _auto_assign_task_instance(self, task: TaskAI):
-        """
-        Build task payload -> pick candidate (OpenAI if available, else fallback) -> attempt resolve and assign.
-        Store diagnostics in task.ai_meta and persist. Create Notification if assignment succeeded.
-        """
         task_payload = {
             "taskId": getattr(task, "id", None),
             "title": getattr(task, "title", "") or "",
@@ -841,7 +871,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             "priority": getattr(task, "priority", "") or "",
             "deadline": str(getattr(task, "deadline")) if getattr(task, "deadline", None) else "",
             "hours": getattr(task, "hours", 0) or 0,
-            "required_developer_type": getattr(task, "project_type", None) or getattr(task, "developer_type", None) or None,
+            "required_developer_type": self.infer_task_dev_type({"developer_type": getattr(task, "project_type", None) or getattr(task, "developer_type", None) or None, "tags": getattr(task, "tags", []) or []}),
             "required_skills": getattr(task, "extra", {}).get("required_skills") if isinstance(getattr(task, "extra", None), dict) else [],
         }
 
@@ -850,7 +880,11 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             logger.info("Auto-assign: no candidates found")
             return None
 
+        logger.debug("Auto-assign: %d candidates available for task %s", len(candidates), task_payload.get("taskId"))
+
         chosen = None
+        raw_openai = None
+        parsed_openai = None
         try:
             if OPENAI_AVAILABLE and getattr(settings, "OPENAI_API_KEY", None):
                 try:
@@ -863,21 +897,38 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             chosen = None
 
         if not chosen:
+            try:
+                scored_debug = []
+                for c in candidates:
+                    s, reason, overlap = self._score_candidate(task_payload, c)
+                    scored_debug.append((s, overlap, c.get("id"), c.get("name"), c.get("current_load")))
+                scored_debug.sort(key=lambda t: (-t[0], -t[1]))
+                logger.debug("Auto-assign debug task=%s top_candidates=%s", task_payload.get("taskId"), scored_debug[:6])
+            except Exception:
+                logger.exception("failed to produce debug scoring for task %s", task_payload.get("taskId"))
             chosen = self._choose_candidate_fallback(task_payload, candidates)
 
         if not isinstance(chosen, dict):
             chosen = {"memberId": None, "memberName": None, "confidence": 0, "reason": "no candidate", "meta": None}
 
-        # Attempt to resolve chosen candidate to a User
         user_obj, diag = self._resolve_candidate_to_user(chosen.get("memberId"), chosen.get("memberName"), candidates)
 
-        # persist metadata regardless
         task.ai_suggested = True
-        task.ai_confidence = int(chosen.get("confidence") or 0)
+        try:
+            task.ai_confidence = int(chosen.get("confidence") or 0)
+        except Exception:
+            task.ai_confidence = 0
         task.ai_reason = chosen.get("reason") or (diag.get("steps")[0] if diag.get("steps") else "")
-        task.ai_meta = {"chosen": chosen, "diag": diag}
+        # persist ai meta including raw openai if present
+        meta_for_save = {"chosen": chosen, "diag": diag}
+        if chosen.get("meta") and isinstance(chosen.get("meta"), dict):
+            # keep raw_openai if present from earlier fallback decorations
+            if chosen["meta"].get("raw_openai"):
+                meta_for_save["raw_openai"] = chosen["meta"].get("raw_openai")
+            if chosen["meta"].get("parsed_openai"):
+                meta_for_save["parsed_openai"] = chosen["meta"].get("parsed_openai")
+        task.ai_meta = meta_for_save
 
-        # Lock assignment if model supports it
         if hasattr(task, "assignment_locked"):
             try:
                 task.assignment_locked = True
@@ -885,7 +936,6 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.exception("failed to set assignment_locked flag")
 
         if user_obj:
-            # assign and persist
             task.assignee = user_obj
             task.assigned_by = getattr(task, "created_by", None) or None
             task.assigned_at = timezone.now()
@@ -894,102 +944,83 @@ class TaskAIViewSet(viewsets.ModelViewSet):
                 logger.info("Auto-assigned Task %s -> User %s (conf=%s)", task.pk, user_obj.pk, task.ai_confidence)
             except Exception:
                 logger.exception("Failed to save TaskAI after auto-assign")
-                # fallback: attempt direct update
                 try:
-                    TaskAI.objects.filter(pk=task.pk).update(
-                        assignee_id=user_obj.pk,
-                        assigned_by_id=(getattr(task, "created_by_id", None) or None),
-                        assigned_at=timezone.now(),
-                        ai_suggested=True,
-                        ai_confidence=task.ai_confidence,
-                        ai_reason=task.ai_reason,
-                        ai_meta=task.ai_meta,
-                        **({"assignment_locked": True} if hasattr(task, "assignment_locked") else {})
-                    )
+                    TaskAI.objects.filter(pk=task.pk).update(assignee_id=user_obj.pk, assigned_by_id=(getattr(task, "created_by_id", None) or None), assigned_at=timezone.now(), ai_suggested=True, ai_confidence=task.ai_confidence, ai_reason=task.ai_reason, ai_meta=task.ai_meta, **({"assignment_locked": True} if hasattr(task, "assignment_locked") else {}))
                 except Exception:
                     logger.exception("Fallback update also failed for auto-assign")
-
-            # create notification if Notification model exists
             try:
                 Notification = apps.get_model("timesheet", "Notification")
-                Notification.objects.create(
-                    recipient_id=user_obj.pk,
-                    verb=f"You have been assigned to task: {task.title or task.pk}",
-                    task_id=task.pk,
-                )
+                Notification.objects.create(recipient_id=user_obj.pk, verb=f"You have been assigned to task: {task.title or task.pk}", task_id=task.pk)
             except Exception:
                 logger.exception("Failed to create Notification for auto-assigned task %s", task.pk)
-
             return user_obj
 
-        # No resolved user — still persist ai metadata
         try:
             task.save()
         except Exception:
             logger.exception("Failed to save TaskAI with ai_meta when no user resolved")
         logger.info("Auto-assign did not resolve a User for Task %s; diag=%s", task.pk, diag)
         return None
-    
+
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
     def reviews(self, request, pk=None):
-        """
-        List reviews for this task.
-        """
         try:
             task = TaskAI.objects.get(pk=pk)
         except TaskAI.DoesNotExist:
             return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
-
         qs = TaskReview.objects.filter(task=task).order_by("-created_at")
         page = self.paginate_queryset(qs)
         if page is not None:
             ser = TaskReviewSerializer(page, many=True, context={"request": request, "task": task})
             return self.get_paginated_response(ser.data)
-
         ser = TaskReviewSerializer(qs, many=True, context={"request": request, "task": task})
         return Response(ser.data)
 
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
     def create_review(self, request, pk=None):
-        """
-        Create a review for this task. Reviewer is taken from request.user -> Member.
-        Expected payload: { "text": "...", "rating": 4 }
-        """
         try:
             task = TaskAI.objects.get(pk=pk)
         except TaskAI.DoesNotExist:
             return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
-
         serializer = TaskReviewSerializer(data=request.data, context={"request": request, "task": task})
         serializer.is_valid(raise_exception=True)
         review = serializer.save()
 
-        # Update member aggregates on the MEMBER WHO WAS REVIEWED.
-        # Decide which Member to update: often you review the assignee (task.assignee.member_profile)
         reviewed_member = None
-        if getattr(task, "assignee", None):
+        try:
+            MemberModel = apps.get_model("projects", "Member")
+        except Exception:
             try:
-                reviewed_member = Member.objects.get(user=task.assignee)
-            except Member.DoesNotExist:
+                MemberModel = apps.get_model("members", "Member")
+            except Exception:
+                MemberModel = None
+
+        if getattr(task, "assignee", None) and MemberModel:
+            try:
+                reviewed_member = MemberModel.objects.get(user=task.assignee)
+            except Exception:
                 reviewed_member = None
 
-        # If there's a reviewed_member and you've added aggregate fields to Member, update them
         if reviewed_member:
-            # Recompute aggregates from TaskReview objects that point to tasks assigned to this member
-            # Example: average rating across all reviews for tasks where task.assignee == that member's user
-            # You can change aggregation scope as desired.
             from django.db.models import Avg, Count
             agg = TaskReview.objects.filter(task__assignee=reviewed_member.user, rating__isnull=False).aggregate(avg=Avg("rating"), cnt=Count("id"))
             avg_rating = agg["avg"] or 0.0
             cnt = agg["cnt"] or 0
-            # Only update if Member model has these fields (optional)
+            fields_to_update = []
             if hasattr(reviewed_member, "avg_rating"):
                 reviewed_member.avg_rating = float(avg_rating)
+                fields_to_update.append("avg_rating")
             if hasattr(reviewed_member, "review_count"):
                 reviewed_member.review_count = int(cnt)
+                fields_to_update.append("review_count")
             if hasattr(reviewed_member, "last_reviewed_at"):
                 reviewed_member.last_reviewed_at = review.created_at
-            reviewed_member.save(update_fields=[f for f in ("avg_rating", "review_count", "last_reviewed_at") if hasattr(reviewed_member, f)])
+                fields_to_update.append("last_reviewed_at")
+            if fields_to_update:
+                try:
+                    reviewed_member.save(update_fields=fields_to_update)
+                except Exception:
+                    logger.exception("Failed updating review aggregates on Member %s", getattr(reviewed_member, "pk", None))
 
         out_ser = TaskReviewSerializer(review, context={"request": request, "task": task})
         return Response(out_ser.data, status=status.HTTP_201_CREATED)

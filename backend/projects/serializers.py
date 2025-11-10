@@ -15,7 +15,7 @@ class MemberSimpleSerializer(serializers.ModelSerializer):
     """
     name = serializers.SerializerMethodField()
     email = serializers.EmailField(source="user.email", read_only=True)
-    experience = serializers.IntegerField(read_only=True, source="experience")
+    experience = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Member

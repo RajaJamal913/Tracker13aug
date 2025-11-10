@@ -75,11 +75,11 @@ export default function TimeTracker() {
                            <h6 className="mb-3">Notification Popup</h6>
                             <div className="form-check form-switch mb-2">
                                 <input className="form-check-input" type="checkbox" id="summaryReport" checked />
-                                <label className="form-check-label" htmlFor="summaryReport">Notify members when they are late from the scheduled time </label>
+                                <label className="form-check-label" htmlFor="summaryReport">Notify members when they are late from the scheduled time</label>
                             </div>
                             <div className="form-check form-switch mb-4">
                                 <input className="form-check-input" type="checkbox" id="trackedHours" checked />
-                                <label className="form-check-label" htmlFor="trackedHours">Notify members, if they turned off the tracker earlier than the scheduled time </label>
+                                <label className="form-check-label" htmlFor="trackedHours">Notify members, if they turned off the tracker earlier than the scheduled time</label>
                             </div>
 
 

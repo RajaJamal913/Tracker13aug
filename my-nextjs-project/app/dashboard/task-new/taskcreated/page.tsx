@@ -4,6 +4,9 @@ import React, { JSX, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Spinner, Button, Badge, Row, Col, Alert } from "react-bootstrap";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 type TaskItem = {
   id?: number | string;
   pk?: number | string;
@@ -35,7 +38,8 @@ type TaskItem = {
   [k: string]: any;
 };
 
-const API_PATH = "/api/tasksai/created/";
+// Update API_PATH to use the environment variable
+const API_PATH = `${API_BASE_URL}/api/tasksai/created/`;
 
 function prettyJSON(obj: any) {
   try {
@@ -94,8 +98,8 @@ export default function CreatedTasksPage(): JSX.Element {
 
   const fetchWithAuth = async (path: string, opts: RequestInit = {}, attemptAuthSchemes: ("Token" | "Bearer")[] = ["Token", "Bearer"]) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const base = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000");
-    const url = path.startsWith("http") ? path : base + path;
+    // Remove the old base URL logic since we're now using full URLs
+    const url = path;
     if (!token) return fetch(url, { ...opts, credentials: "include" });
 
     let lastRes: Response | null = null;
@@ -324,22 +328,9 @@ export default function CreatedTasksPage(): JSX.Element {
                                   </div>
 
                                   <div className="d-grid gap-2">
-                                    {/* <Button variant="outline-secondary" size="sm" onClick={(e) => { e.stopPropagation(); openTaskDetail(t); }}>
-                                      Open Task Page
-                                    </Button> */}
-
-                                    {/* REVIEW BUTTON: navigates to a review page for this task */}
                                     <Button variant="outline-success" size="sm" onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/task-review/${id}`); }}>
                                       Review Task
                                     </Button>
-
-                                    {/* <Button variant="outline-primary" size="sm" onClick={(e) => {
-                                      e.stopPropagation();
-                                      const txt = prettyJSON({ ai_meta: t.ai_meta, extra: t.extra });
-                                      navigator.clipboard?.writeText(txt).then(() => alert("Copied AI meta + extra to clipboard")).catch(() => alert("Copy failed"));
-                                    }}>
-                                      Copy AI meta
-                                    </Button> */}
                                     <Button variant="light" size="sm" onClick={(e) => { e.stopPropagation(); toggleExpand(t); }}>
                                       Close
                                     </Button>
@@ -371,7 +362,7 @@ export default function CreatedTasksPage(): JSX.Element {
 
       <style jsx>{`
         :global(body) {
-          --page-bg-00: #e9fdfb; /* pale aqua like your screenshot */
+          --page-bg-00: #e9fdfb;
           --card-bg: #ffffff;
           background: linear-gradient(180deg, var(--page-bg-00) 0%, #f6fffd 100%);
           -webkit-font-smoothing: antialiased;
@@ -394,7 +385,6 @@ export default function CreatedTasksPage(): JSX.Element {
 
         .custom-table-wrap { overflow: auto; }
 
-        /* ===== Table style to match your screenshot ===== */
         :global(.table) {
           width: 100%;
           border-collapse: separate !important;
@@ -404,7 +394,6 @@ export default function CreatedTasksPage(): JSX.Element {
           font-size: 14px;
         }
 
-        /* header: solid purple bar with white text and rounded corners */
         :global(.table thead th) {
           background: linear-gradient(90deg,#6f2bd6,#4e1fb3) !important;
           color: #fff !important;
@@ -416,28 +405,23 @@ export default function CreatedTasksPage(): JSX.Element {
         :global(.table thead th:first-child) { border-top-left-radius: 8px; }
         :global(.table thead th:last-child) { border-top-right-radius: 8px; }
 
-        /* table body rows — pale lavender fill like screenshot */
         :global(.table tbody td) {
-          background: rgba(113,54,178,0.05) !important; /* very light lavender */
+          background: rgba(113,54,178,0.05) !important;
           padding: 10px 14px !important;
           color: #2b2b2b !important;
           border-top: 1px solid rgba(75,0,130,0.05) !important;
           vertical-align: middle !important;
         }
 
-        /* make the first data row slightly stronger — creates a boxed row look */
         :global(.table tbody tr:first-child td) { background: rgba(113,54,178,0.08) !important; }
 
-        /* remove default table borders that conflict with the look */
         :global(.table-bordered) { border: none !important; }
         :global(.table-bordered td), :global(.table-bordered th) { border: none !important; }
 
-        /* hover — keep subtle purple tint */
         .row-main:hover td { background: rgba(113,54,178,0.12) !important; }
 
         .task-title { color: #0f1724; font-weight: 700; }
 
-        /* AI badge: blue pill for suggested, yellow small for locked */
         .ai-badge {
           background: linear-gradient(90deg,#5cc3ff,#28a3ff) !important;
           color: #042a3a !important;
@@ -456,10 +440,8 @@ export default function CreatedTasksPage(): JSX.Element {
           font-size: 12px;
         }
 
-        /* small muted text under titles */
         .text-muted { color: rgba(15,23,42,0.45) !important; }
 
-        /* detail row container to appear white and elevated slightly */
         .detail-cell {
           background: #fff !important;
           border-top: none !important;
@@ -472,11 +454,9 @@ export default function CreatedTasksPage(): JSX.Element {
         .meta-box { background: #fff; border: 1px solid rgba(0,0,0,0.04); padding: 8px; border-radius: 8px; }
         .meta-pre { background: #fafaff; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
 
-        /* buttons (fallbacks) */
         .g-btn { background: linear-gradient(90deg, #6f42c1, #8e44ad); color: white; border: none; padding: 8px 14px; border-radius: 8px; }
         .g-btn-secondary { background: white; color: #333; border: 1px solid rgba(0,0,0,0.06); padding: 8px 12px; border-radius: 8px; }
 
-        /* responsive stacked view for very small screens */
         @media (max-width: 880px) {
           .table thead { display: none; }
           .table, .table tbody, .table tr, .table td { display: block; width: 100%; }

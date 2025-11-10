@@ -9,6 +9,9 @@ import { Dialog } from "@headlessui/react";
 import { FiLayers } from "react-icons/fi";
 import Link from "next/link";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 interface Member {
   id: number;
   user?: number;
@@ -68,7 +71,7 @@ export default function ProjectsPage() {
       return;
     }
 
-    fetch("http://127.0.0.1:8000/api/projects/", {
+    fetch(`${API_BASE_URL}/api/projects/`, {
       method: "GET",
       credentials: "include",
       headers: {
@@ -99,7 +102,7 @@ export default function ProjectsPage() {
     setIsLoadingMembers(true);
     try {
       // NOTE: we pass invited_by_me=1 to get only members that accepted invites created by this user
-      const res = await fetch("http://127.0.0.1:8000/api/members/?invited_by_me=1", {
+      const res = await fetch(`${API_BASE_URL}/api/members/?invited_by_me=1`, {
         method: "GET",
         credentials: "include",
         headers: {
@@ -174,7 +177,7 @@ export default function ProjectsPage() {
     };
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/createproject/", {
+      const res = await fetch(`${API_BASE_URL}/api/createproject/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -186,7 +189,7 @@ export default function ProjectsPage() {
       if (res.ok) {
         closeModal();
         // Re-fetch projects
-        const updated = await fetch("http://127.0.0.1:8000/api/projects/", {
+        const updated = await fetch(`${API_BASE_URL}/api/projects/`, {
           headers: {
             "Authorization": `Token ${token}`,
           },

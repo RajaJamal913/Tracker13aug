@@ -18,7 +18,7 @@ from django.conf import settings
 
 User = get_user_model()
 
-ISSUER_NAME = getattr(settings, "TWOFACTOR_ISSUER_NAME", "MyProject")
+ISSUER_NAME = getattr(settings, "TWOFACTOR_ISSUER_NAME", "Tracker")
 
 
 class TwoFactorSetupView(APIView):
@@ -105,50 +105,77 @@ class TwoFactorDisableView(APIView):
         return Response({"detail": "2FA disabled."}, status=status.HTTP_200_OK)
 
 
+import logging
+from rest_framework import permissions, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
+from rest_framework.authtoken.models import Token
+
+from .serializers import LoginWith2FASerializer
+from .models import TwoFactor
+from . import utils
+
+logger = logging.getLogger(__name__)
+User = get_user_model()
+
 class LoginWith2FAView(APIView):
     """
     Combined login endpoint that enforces 2FA when enabled for the user.
-    Returns DRF Token (same model you use elsewhere).
+    Returns DRF Token.
     Body: { email, password, code? }
-    - If user has 2FA enabled and no/invalid code submitted, returns 400 with { need_2fa: true }.
+    - If user has 2FA enabled and no/invalid code submitted, returns 200 with {"need_2fa": true} so frontend handles it as a flow step.
     """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        # DEBUG (dev only): log incoming request so we can see why serializer fails
+        try:
+            logger.debug("LOGIN-2FA request content_type=%s", request.content_type)
+            logger.debug("LOGIN-2FA raw body: %s", request.body.decode("utf8", errors="replace"))
+            logger.debug("LOGIN-2FA parsed request.data: %s", request.data)
+            logger.debug("LOGIN-2FA headers: Authorization=%s Accept=%s",
+                         request.META.get("HTTP_AUTHORIZATION"),
+                         request.META.get("HTTP_ACCEPT"))
+        except Exception:
+            logger.exception("Failed to log login-2fa request")
+
         serializer = LoginWith2FASerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # Log validation errors (helpful in development)
+            logger.debug("LOGIN-2FA serializer errors: %s", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         email = serializer.validated_data["email"].lower()
         password = serializer.validated_data["password"]
         code = serializer.validated_data.get("code", "").strip()
 
-        # Authenticate (case-insensitive lookup like your other code)
+        # Lookup user by email (case-insensitive)
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            # Do not reveal existence
-            return Response({"detail": "Invalid credentials."}, status=status.HTTP_400_BAD_REQUEST)
+            # Do not leak whether user exists — return generic 401
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.check_password(password):
-            return Response({"detail": "Invalid credentials."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_active:
-            return Response({"detail": "User account disabled."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "User account disabled."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Check if user has 2FA enabled
-        try:
-            tf = user.twofactor
-        except TwoFactor.DoesNotExist:
-            tf = None
-
+        # Check 2FA
+        tf = getattr(user, "twofactor", None)
         if tf and tf.enabled:
             if not code:
-                # Tell the client that 2FA code is required for this account
-                return Response({"need_2fa": True, "detail": "Two-factor code required."}, status=status.HTTP_400_BAD_REQUEST)
+                # IMPORTANT: return 200 with a structured shape for UI to prompt code input
+                return Response({"need_2fa": True, "detail": "Two-factor code required."}, status=status.HTTP_200_OK)
+
             totp = utils.get_totp(tf.secret)
             if not totp.verify(code, valid_window=1):
-                return Response({"detail": "Invalid two-factor code."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Invalid two-factor code."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # create token (delete old to avoid duplicates like you did)
+        # At this point authentication succeeded
         Token.objects.filter(user=user).delete()
         token = Token.objects.create(user=user)
 

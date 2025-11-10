@@ -1,30 +1,29 @@
 'use client';
-import React, { useEffect, useState } from "react";
+
+import React, { JSX, useEffect, useState } from "react";
 
 /**
- * TwoFASettings
- * - Start setup -> POST /api/twofactor/setup/ (authenticated)
- *   returns { otpauth_url, qr_code_data_uri? }
- * - Verify setup -> POST /api/twofactor/verify-setup/ with { code }
- * - Disable -> POST /api/twofactor/disable/ with { password, code? }
+ * TwoFASettings.tsx
+ * Complete frontend component (single-file) to manage TOTP 2FA setup, verify, and disable.
+ * - Uses localStorage access/token for Authorization header
+ * - Improved authFetch with debug logging and flexible content-type handling
+ * - Better error messages surfaced to the user
+ * - Optional status check (GET /api/twofactor/status/) if your backend exposes it
  *
- * Uses localStorage token/access to authenticate:
- * - if localStorage.access exists -> uses Authorization: Bearer <access>
- * - else if localStorage.token exists -> uses Authorization: Token <token>
- *
- * Note: ensure user is already logged in (token present) before using.
+ * Drop this file into your Next.js app (e.g. app/components/TwoFASettings.tsx) and import where needed.
+ * Ensure Bootstrap CSS is available in your app (you already used it in your project).
  */
 
 function buildAuthHeader() {
-  const access = localStorage.getItem("access");
-  const token = localStorage.getItem("token");
+  const access = typeof window !== 'undefined' ? localStorage.getItem("access") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
   if (access) return { Authorization: `Bearer ${access}` };
   if (token) return { Authorization: `Token ${token}` };
   return {};
 }
 
-export default function TwoFASettings() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+export default function TwoFASettings(): JSX.Element {
+  const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000").replace(/\/$/, "");
 
   const [qrDataUri, setQrDataUri] = useState<string | null>(null);
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
@@ -35,40 +34,64 @@ export default function TwoFASettings() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
   async function authFetch(path: string, opts: RequestInit = {}) {
-    const headers = new Headers(opts.headers as HeadersInit);
-    headers.set("Content-Type", "application/json");
+    const headers = new Headers(opts.headers as HeadersInit || {});
+
+    // Set Content-Type only when we send a body (and it's not a FormData)
+    if (opts.body && !(opts.body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
+
     const auth = buildAuthHeader();
     if (auth.Authorization) headers.set("Authorization", auth.Authorization);
 
-    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+    const fetchOpts: RequestInit = {
+      ...opts,
+      headers,
+      // If you're using cookie+session authentication, uncomment next line and ensure CSRF header is provided
+      // credentials: 'include',
+    };
+
+    const url = `${API_BASE}${path}`;
+    const res = await fetch(url, fetchOpts);
+
+    // Try parse JSON body when possible
     const ct = res.headers.get("content-type") || "";
     let data: any = null;
-    if (ct.includes("application/json")) data = await res.json();
-    else data = null;
-    return { ok: res.ok, status: res.status, data };
+    if (ct.includes("application/json")) {
+      try { data = await res.json(); } catch (e) { data = null; }
+    }
+
+    // debug log for easier troubleshooting
+    // Remove or reduce logging in production
+    console.debug("[TwoFA][authFetch]", { url, status: res.status, ok: res.ok, data });
+
+    return { ok: res.ok, status: res.status, data, raw: res };
   }
 
+  // Start setup (POST /api/twofactor/setup/)
   async function startSetup() {
     setIsLoading(true);
     setStepMessage(null);
     try {
       const r = await authFetch("/api/twofactor/setup/", { method: "POST" });
       if (!r.ok) {
-        setStepMessage(r.data?.detail || "Failed to start 2FA setup.");
+        const err = r.data?.detail || JSON.stringify(r.data) || `Status ${r.status}`;
+        setStepMessage(`Failed to start 2FA setup: ${err}`);
         setIsLoading(false);
         return;
       }
       setOtpauthUrl(r.data?.otpauth_url ?? null);
       setQrDataUri(r.data?.qr_code_data_uri ?? null);
-      setStepMessage("Scan the QR or use the provisioning URL, then enter the 6-digit code to verify.");
+      setStepMessage("Scan the QR or open the provisioning URL in your authenticator, then enter the 6-digit code below to verify.");
     } catch (err) {
-      console.error(err);
+      console.error("Network error startSetup:", err);
       setStepMessage("Network error while starting setup.");
     } finally {
       setIsLoading(false);
     }
   }
 
+  // Verify setup (POST /api/twofactor/verify-setup/)
   async function verifySetup() {
     if (!code) {
       setStepMessage("Enter the 6-digit code first.");
@@ -76,29 +99,40 @@ export default function TwoFASettings() {
     }
     setIsLoading(true);
     setStepMessage(null);
+
     try {
+      const payload = { code: code.trim() };
       const r = await authFetch("/api/twofactor/verify-setup/", {
         method: "POST",
-        body: JSON.stringify({ code: code.trim() }),
+        body: JSON.stringify(payload),
       });
+
       if (!r.ok) {
-        setStepMessage(r.data?.detail || "Invalid code.");
+        if (r.data) {
+          // serializer errors often come as { code: ["..."] }
+          const fieldErr = (Array.isArray(r.data.code) && r.data.code.join(" ")) || r.data.detail || JSON.stringify(r.data);
+          setStepMessage(fieldErr || `Verify failed (status ${r.status}).`);
+        } else {
+          setStepMessage(`Verify failed (status ${r.status}).`);
+        }
         setIsLoading(false);
         return;
       }
+
       setStepMessage("2FA setup verified and enabled.");
       setQrDataUri(null);
       setOtpauthUrl(null);
       setCode("");
       setEnabled(true);
     } catch (err) {
-      console.error(err);
+      console.error("Network error verifying code:", err);
       setStepMessage("Network error verifying code.");
     } finally {
       setIsLoading(false);
     }
   }
 
+  // Disable 2FA (POST /api/twofactor/disable/)
   async function disable2FA() {
     if (!passwordForDisable) {
       setStepMessage("Enter your password to disable 2FA.");
@@ -106,22 +140,31 @@ export default function TwoFASettings() {
     }
     setIsLoading(true);
     setStepMessage(null);
+
     try {
+      const payload = { password: passwordForDisable, code: code || "" };
       const r = await authFetch("/api/twofactor/disable/", {
         method: "POST",
-        body: JSON.stringify({ password: passwordForDisable, code: code || "" }),
+        body: JSON.stringify(payload),
       });
+
       if (!r.ok) {
-        setStepMessage(r.data?.detail || "Unable to disable 2FA.");
+        if (r.data) {
+          const err = r.data.detail || JSON.stringify(r.data);
+          setStepMessage(err || `Unable to disable 2FA (status ${r.status}).`);
+        } else {
+          setStepMessage(`Unable to disable 2FA (status ${r.status}).`);
+        }
         setIsLoading(false);
         return;
       }
+
       setStepMessage("2FA disabled.");
       setEnabled(false);
       setPasswordForDisable("");
       setCode("");
     } catch (err) {
-      console.error(err);
+      console.error("Network error disabling 2FA:", err);
       setStepMessage("Network error disabling 2FA.");
     } finally {
       setIsLoading(false);
@@ -130,14 +173,29 @@ export default function TwoFASettings() {
 
   function copyToClipboard(text?: string | null) {
     if (!text) return;
-    navigator.clipboard?.writeText(text);
-    setStepMessage("Copied to clipboard.");
+    try { navigator.clipboard?.writeText(text); setStepMessage("Copied to clipboard."); } catch (e) { /* ignore */ }
   }
 
-  // optional: check current enabled state might be provided by an endpoint; fallback to null.
+  // Optional: check current 2FA enabled state if your backend provides an endpoint.
+  // If you don't have such an endpoint you can remove this block.
   useEffect(() => {
-    // If you have an endpoint to check current 2FA status you can call it here.
-    // For now we leave enabled=null (unknown) and update on actions.
+    let mounted = true;
+    async function checkStatus() {
+      try {
+        const r = await authFetch("/api/twofactor/status/", { method: "GET" });
+        if (!mounted) return;
+        if (r.ok && r.data && typeof r.data.enabled === 'boolean') {
+          setEnabled(r.data.enabled);
+        } else {
+          // if not available, leave enabled as null
+          console.debug('[TwoFA] status endpoint not present or returned unexpected payload', r);
+        }
+      } catch (e) {
+        console.debug('[TwoFA] status check failed', e);
+      }
+    }
+    checkStatus();
+    return () => { mounted = false; };
   }, []);
 
   return (
@@ -154,14 +212,15 @@ export default function TwoFASettings() {
 
         <div className="mb-3">
           <button className="btn btn-outline-primary me-2" onClick={startSetup} disabled={isLoading}>
-            {isLoading ? "Starting..." : "Set up Authenticator"}
+            {isLoading ? "Working..." : "Set up Authenticator"}
           </button>
 
-          <button className="btn btn-outline-danger" onClick={() => { setQrDataUri(null); setOtpauthUrl(null); setCode(""); setStepMessage(null); }}>
+          <button className="btn btn-outline-secondary" onClick={() => { setQrDataUri(null); setOtpauthUrl(null); setCode(""); setStepMessage(null); }}>
             Cancel Setup
           </button>
         </div>
 
+        {/* QR image if available */}
         {qrDataUri && (
           <div className="mb-3">
             <div>
@@ -175,6 +234,7 @@ export default function TwoFASettings() {
           </div>
         )}
 
+        {/* Provisioning URL fallback */}
         {otpauthUrl && !qrDataUri && (
           <div className="mb-3">
             <div><strong>Provisioning URL:</strong></div>
@@ -190,7 +250,14 @@ export default function TwoFASettings() {
           <div className="mb-3">
             <label className="form-label">Enter 6-digit code to verify</label>
             <div className="d-flex gap-2">
-              <input type="text" maxLength={6} className="form-control" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="123456" />
+              <input
+                type="text"
+                maxLength={6}
+                className="form-control"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+              />
               <button className="btn btn-primary" onClick={verifySetup} disabled={isLoading}>Verify</button>
             </div>
           </div>
@@ -212,10 +279,15 @@ export default function TwoFASettings() {
         </div>
 
         {stepMessage && (
-          <div className="alert alert-info mt-3">
+          <div className="alert alert-info mt-3" role="alert">
             {stepMessage}
           </div>
         )}
+
+        {/* show current status for convenience */}
+        <div className="mt-3 small text-muted">
+          Current 2FA status: {enabled === null ? "unknown" : enabled ? "enabled" : "disabled"}
+        </div>
       </div>
     </div>
   );

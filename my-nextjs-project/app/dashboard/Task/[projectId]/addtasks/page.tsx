@@ -16,6 +16,9 @@ import Select from "react-select";
 import { Button } from "@/components/ui/button";
 import "bootstrap/dist/js/bootstrap.bundle.min";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 type ApiTask = {
   id: number;
   sequence_id: number;
@@ -64,7 +67,7 @@ export default function AddTasksPage() {
   // Fetch project name & members
   useEffect(() => {
     // Projects
-    fetch("http://127.0.0.1:8000/api/projects/", {
+    fetch(`${API_BASE_URL}/api/projects/`, {
       credentials: "include",
       headers: { 'X-CSRFToken': csrftoken }
     })
@@ -76,7 +79,7 @@ export default function AddTasksPage() {
       .catch(console.error);
 
     // Members
-    fetch(`http://127.0.0.1:8000/api/projects/${pid}/members/`, {
+    fetch(`${API_BASE_URL}/api/projects/${pid}/members/`, {
       credentials: "include",
       headers: { 'X-CSRFToken': csrftoken }
     })
@@ -93,7 +96,7 @@ export default function AddTasksPage() {
     if (!pid) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/tasks/?project=${pid}`, {
+      const res = await fetch(`${API_BASE_URL}/api/tasks/?project=${pid}`, {
         credentials: "include",
         headers: { 'X-CSRFToken': csrftoken }
       });
@@ -121,7 +124,7 @@ export default function AddTasksPage() {
       assignee: newTask.assignee ? Number(newTask.assignee) : null,
     };
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/tasks/create/", {
+      const res = await fetch(`${API_BASE_URL}/api/tasks/create/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -147,7 +150,7 @@ export default function AddTasksPage() {
     if (!editingTask) return;
     const { id, sequence_id, project, created_at, updated_at, ...body } = editingTask;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/tasks/${id}/`, {
+      const res = await fetch(`${API_BASE_URL}/api/tasks/${id}/`, {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -167,7 +170,7 @@ export default function AddTasksPage() {
   // Delete task
   const deleteTask = async (id: number) => {
     try {
-      await fetch(`http://127.0.0.1:8000/api/tasks/${id}/`, {
+      await fetch(`${API_BASE_URL}/api/tasks/${id}/`, {
         method: "DELETE",
         credentials: "include",
         headers: { 'X-CSRFToken': csrftoken }
@@ -183,7 +186,7 @@ export default function AddTasksPage() {
       <div className="modal fade" id="addTaskModal" tabIndex={-1}>
         <div className="modal-dialog">
           <div className="modal-content p-4">
-            <h5 className="mb-3">Add Task to “{projectName}”</h5>
+            <h5 className="mb-3">Add Task to "{projectName}"</h5>
             <input
               className="form-control mb-2"
               placeholder="Title"

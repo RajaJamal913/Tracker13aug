@@ -159,7 +159,7 @@ export default function Home() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
-      router.push('/user-login');
+      router.push('/userLogin');
       return;
     }
 

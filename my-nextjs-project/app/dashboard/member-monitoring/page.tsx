@@ -13,6 +13,9 @@ import {
 } from 'react-bootstrap';
 import { FaPlay, FaPause } from 'react-icons/fa';
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 interface ProjectOption {
   id: number;
   name: string;
@@ -73,7 +76,7 @@ export default function MonitoringPage() {
   // Load project list
   useEffect(() => {
     if (!token) return;
-    fetch('http://127.0.0.1:8000/api/projects/', {
+    fetch(`${API_BASE_URL}/api/projects/`, {
       headers: { Authorization: `Token ${token}` },
     })
       .then(res => res.json())
@@ -89,7 +92,7 @@ export default function MonitoringPage() {
       setError(null);
       try {
         const res = await fetch(
-          `http://127.0.0.1:8000/api/monitor/status/?project=${projectId}`,
+          `${API_BASE_URL}/api/monitor/status/?project=${projectId}`,
           { headers: { Authorization: `Token ${token}` } }
         );
         if (!res.ok) throw new Error(await res.text());
@@ -126,7 +129,7 @@ export default function MonitoringPage() {
     const action = sessionData.status === 'active' ? 'stop' : 'start';
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/api/monitor/${action}/?project=${selectedProject}`,
+        `${API_BASE_URL}/api/monitor/${action}/?project=${selectedProject}`,
         { method: 'POST', headers: { Authorization: `Token ${token}` } }
       );
       if (!res.ok) throw new Error(await res.text());

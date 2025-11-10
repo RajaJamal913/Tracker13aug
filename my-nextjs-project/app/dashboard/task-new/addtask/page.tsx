@@ -7,6 +7,9 @@ import ProductivityChart from "@/components/charts/monthly-productivity-chart";
 import { Modal, Form, Spinner } from "react-bootstrap";
 import { Dropdown } from "primereact/dropdown";
 
+// API base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+
 type Project = {
   id?: number | string;
   pk?: number | string;
@@ -97,7 +100,7 @@ export default function SmartTaskMgt(): JSX.Element {
     attemptAuthSchemes: ("Token" | "Bearer")[] = ["Token", "Bearer"]
   ): Promise<Response> => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + path;
+    const url = API_BASE_URL + path;
     if (!token) {
       return fetch(url, { ...opts, credentials: "include" });
     }
@@ -135,7 +138,7 @@ export default function SmartTaskMgt(): JSX.Element {
         }
 
         // try Token and then Bearer
-        const url = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000") + "/api/projects/";
+        const url = API_BASE_URL + "/api/projects/";
         let res = await fetch(url, {
           method: "GET",
           credentials: "include",
@@ -341,6 +344,19 @@ export default function SmartTaskMgt(): JSX.Element {
     });
   };
 
+  // Handle manual task creation - navigate to project selection or first project
+  const handleAddTaskManually = () => {
+    if (projectOptions.length > 0) {
+      // Navigate to the first project's add tasks page, or you could show a project selection
+      const firstProject = projectOptions[0];
+      router.push(`/dashboard/Task/${firstProject.value}/addtasks`);
+    } else {
+      // If no projects available, show the modal to create a project first or show an error
+      alert("No projects available. Please create a project first.");
+      setShow(true);
+    }
+  };
+
   return (
     <>
       <div className="container-fluid py-4 px-0">
@@ -351,7 +367,9 @@ export default function SmartTaskMgt(): JSX.Element {
               <button className="btn g-btn" onClick={() => setShow(true)}>
                 + Add Task Using AI
               </button>
-              <button className="btn g-btn">+ Add Task Manually</button>
+              <button className="btn g-btn" onClick={handleAddTaskManually}>
+                + Add Task Manually
+              </button>
             </div>
           </div>
         </div>

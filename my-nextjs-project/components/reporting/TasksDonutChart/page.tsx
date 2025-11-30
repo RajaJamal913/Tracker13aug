@@ -23,12 +23,12 @@ export default function TasksDonutChart() {
     { name: 'Missed', value: taskStats.missed },
   ];
 
-  const COLORS = ['#00C853', '#FFC107', '#6A0DAD']; // Green, Yellow, Purple
+  const COLORS = ['#00C853', '#FFC107', '#2F6CE5']; // Green, Yellow, Purple
 
   const totalTasks = chartData.reduce((sum, entry) => sum + entry.value, 0);
 
   return (
-    <div className="charts-wrapper p-4 bg-white rounded-4 g-shadow TasksDonutChart" style={{ maxWidth: '400px' }}>
+    <div className="charts-wrapper p-4 bg-white rounded-4 g-border TasksDonutChart" style={{ maxWidth: '400px' }}>
       <h6 className="fw-semibold mb-3">Tasks</h6>
 
       <ResponsiveContainer width="100%" height={200}>

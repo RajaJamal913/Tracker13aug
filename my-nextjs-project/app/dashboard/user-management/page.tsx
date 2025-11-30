@@ -68,7 +68,7 @@ export default function TimeTracker() {
                 return (
                     <>
                         <div className="cardHeader d-flex justify-content-start align-items-center p-4">
-                            <h5 className="cardTitle text-white m-0">General</h5>
+                            <h5 className="cardTitle m-0">General</h5>
                         </div>
                         <div className="switvh-btns-wrap p-4">
                             <div className="form-check form-switch mb-2">
@@ -89,7 +89,7 @@ export default function TimeTracker() {
                 return (
                     <>
                         <div className="cardHeader d-flex justify-content-start align-items-center p-4">
-                            <h5 className="cardTitle text-white m-0">Software Settings</h5>
+                            <h5 className="cardTitle m-0">Software Settings</h5>
                         </div>
 
                         {/* Sub Tabs */}
@@ -164,12 +164,12 @@ export default function TimeTracker() {
                 }
 
                 .tabButton:hover {
-                    color: #8e44ec;
+                    color: #2f6ce5;
                 }
 
                 .active {
-                    color: #8e44ec;
-                    border-bottom: 2px solid #8e44ec;
+                    color: #2f6ce5;
+                    border-bottom: 2px solid #2f6ce5;
                 }
 
                 .avatar {
@@ -193,7 +193,7 @@ export default function TimeTracker() {
                 }
 
                 .cardHeader {
-                    background-color: #8e44ec;
+                    background-color: #2f6ce5;
                     height: 50px;
                     width: 100%;
                 }
@@ -201,7 +201,7 @@ export default function TimeTracker() {
                 .cardTitle {
                     margin-bottom: 1.5rem;
                     font-weight: 600;
-                    color: #8e44ec;
+                    color: #2f6ce5;
                 }
 
                 .subTabs {
@@ -222,7 +222,7 @@ export default function TimeTracker() {
                 }
 
                 .subTabButton.active {
-                    background-color: #8e44ec;
+                    background-color: #2f6ce5;
                     color: #fff;
                 }
             `}</style>

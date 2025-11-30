@@ -71,7 +71,7 @@ export default function AiSuggestion() {
       // primary and fallback endpoints (adjust if your API is mounted differently)
       const endpoints = [
         'http://127.0.0.1:8000/api/members/',
-    
+
       ]
 
       for (const url of endpoints) {
@@ -148,9 +148,9 @@ export default function AiSuggestion() {
     const skillsArr = Array.isArray(skillsRaw)
       ? skillsRaw
       : String(skillsRaw)
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
 
     // developer type may come as developer_type or developerType
     const developerType = m.developer_type ?? m.developerType ?? m.developerTypeName ?? null
@@ -173,7 +173,7 @@ export default function AiSuggestion() {
       match: matchLabel,
       skills: skillsArr,
       profileImg: m.profile_image ?? '/assets/images/profile-img.jpg',
-      topImg: m.top_image ?? '/assets/images/sugg_card_top_img.svg',
+      topImg: m.top_image ?? '/assets/images/new/sugg_card_top_img.svg',
       developerType,
     }
   }
@@ -181,8 +181,9 @@ export default function AiSuggestion() {
   const renderCards = (list: any[]) => {
     return list.map((cardData, idx) => (
       <div className="col-lg-3 mb-4" key={cardData.id ?? idx}>
-        <div className="card border-0 shadow ai-sugg-card text-center p-3 position-relative h-100">
-          <img className="sugg_card_top_img" src={cardData.topImg} alt="Top" />
+        <div className="card shadow ai-sugg-card text-center p-3 position-relative h-100">
+          {/* <img className="sugg_card_top_img" src="{cardData.topImg}" alt="Top" /> */}
+          <img className="sugg_card_top_img" src="/assets/images/new/sugg_card_top_img.svg" alt="Top" />
 
           <div className="card-header position-relative p-0 mb-3 rounded-top">
             <div className="avatar-container">
@@ -192,7 +193,7 @@ export default function AiSuggestion() {
 
           <div className="card-body p-2 sugg-card-data-wrap">
             <ul className="sugg-card-data-wrap">
-              <li style={{ color: "#6E34B5" }}>{cardData.name}</li>
+              <li style={{ color: "#2F6CE5" }}>{cardData.name}</li>
               <li>{cardData.task}</li>
               <li>Reason: {cardData.reason}</li>
               <li>
@@ -256,11 +257,13 @@ export default function AiSuggestion() {
 
         <section className="ai-suggestion-sec py-4">
           <div className="container-fluid py-4">
-            <div className="row">
-              <div className="col-lg-12 mb-3">
-                <h2 className="page-title">Ai Suggestions</h2>
-              </div>
-            </div>
+            
+
+            <div className="row mb-3">
+              <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
+                <h2 className="page-heading-wrapper">Ai Suggestions</h2>
+                  </div>
+                  </div>
 
             {loading && <div className="mb-3">Loading suggestions…</div>}
             {error && <div className="mb-3 text-warning">{error}</div>}
@@ -279,7 +282,7 @@ export default function AiSuggestion() {
         .page-title{
           font-weight: 600;
           font-size: 30px;
-          background: linear-gradient(263.66deg, #9A4AFD 1.73%, #955ADD 53.99%, #6E34B5 98.27%);
+          background: linear-gradient(263.66deg, #9A4AFD 1.73%, #955ADD 53.99%, #2F6CE5 98.27%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;

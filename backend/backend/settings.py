@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'twofactor',
     'reports',
     'task_api',
+    'chat',
+    'channels'
  
 ]
 import os 
@@ -91,6 +93,17 @@ MIDDLEWARE = [
     
 
 ]
+ASGI_APPLICATION = "backend.asgi.application"   # adjust if your project name is different
+
+CHANNEL_LAYERS = {
+  "default": {
+    "BACKEND": "channels.layers.InMemoryChannelLayer"
+    # For production, use Redis:
+    # "BACKEND": "channels_redis.core.RedisChannelLayer",
+    # "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
+  }
+}
+
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 
@@ -164,10 +177,20 @@ USE_I18N = True
 USE_TZ = True
 
 
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
+import os
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")   # files saved here
+
 STATIC_URL = 'static/'
+# allow same-origin embedding
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

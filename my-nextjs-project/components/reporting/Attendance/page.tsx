@@ -29,7 +29,7 @@ export default function Attendance() {
   }
 
   return (
-    <div className="charts-wrapper p-4 bg-white rounded-4 g-shadow">
+    <div className="charts-wrapper p-4 bg-white rounded-4 g-border">
       <div className="card-body">
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h6 className="card-title mb-0">Attendance</h6>

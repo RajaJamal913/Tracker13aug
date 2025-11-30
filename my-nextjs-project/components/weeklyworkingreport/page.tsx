@@ -23,7 +23,7 @@ const data = [
 export default function WeeklyWorkingHoursChart() {
   return (
    
-       <div className="charts-wrapper p-4 bg-white rounded-4 g-shadow">
+       <div className="charts-wrapper p-4 bg-white rounded-4 g-border">
       <h5 className="mb-4 fw-semibold">Weekly Working hours</h5>
       <div style={{ width: '100%', height: 300 }}>
         <ResponsiveContainer>
@@ -32,7 +32,7 @@ export default function WeeklyWorkingHoursChart() {
             <XAxis dataKey="day" />
             <YAxis label={{ value: 'Hours', angle: -90, position: 'insideLeft' }} />
             <Tooltip />
-            <Bar dataKey="hours" fill="#7b2cbf" radius={[10, 10, 0, 0]} barSize={30} />
+            <Bar dataKey="hours" fill="#2F6CE5" radius={[10, 10, 0, 0]} barSize={30} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -20,7 +20,7 @@ const data = [
 
 export default function ProductivityChart() {
   return (
-    <div className="p-4 rounded-4 shadow bg-white" style={{ borderRadius: '20px' }}>
+    <div className="p-4 bg-white g-charts h-100" style={{ borderRadius: '20px' }}>
       <h5 className="fw-bold mb-3">Productivity Trends Analysis</h5>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data} barCategoryGap="20%" barGap={5}>

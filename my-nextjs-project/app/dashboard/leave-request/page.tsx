@@ -536,7 +536,7 @@ const handleDeleteClick = (member: Member) => {  // Add type annotation
         }
 
         .cardHeader {
-          background-color: #8e44ec;
+          background-color: #2f6ce5;
           height: 50px;
           width: 100%;
         }
@@ -544,7 +544,7 @@ const handleDeleteClick = (member: Member) => {  // Add type annotation
         .cardTitle {
           margin-bottom: 1.5rem;
           font-weight: 600;
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .modal {

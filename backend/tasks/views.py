@@ -1,4 +1,3 @@
-# tasks/views.py
 from rest_framework import generics
 from rest_framework.exceptions import ParseError
 
@@ -6,10 +5,7 @@ from projects.models import Member
 from projects.views import assign_user_to_project
 from .models import Task
 from .serializers import TaskSerializer
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated,AllowAny
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework import permissions
 
 
 class TaskCreateView(generics.CreateAPIView):
@@ -18,6 +14,7 @@ class TaskCreateView(generics.CreateAPIView):
     permission_classes = [AllowAny]
 
     def perform_create(self, serializer):
+        # save then ensure the assignee (Member) has a linked User added to the project
         task = serializer.save()
 
         if task.assignee is None:
@@ -29,22 +26,52 @@ class TaskCreateView(generics.CreateAPIView):
 
         assign_user_to_project(task.project, member.user)
 
+
 class TaskListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    """
+    GET /api/tasks/
+    Optional query param: ?project=<project_id>
+    If ?project is present it filters by project_id; otherwise returns all tasks.
+    """
+    permission_classes = [AllowAny]
     serializer_class = TaskSerializer
 
     def get_queryset(self):
         qs = Task.objects.all()
         project_id = self.request.query_params.get("project")
-        if project_id is None:
-            raise ParseError("`project` query parameter is required.")
-        return qs.filter(project_id=project_id)
+        if project_id:
+            return qs.filter(project_id=project_id)
+        return qs
+
 
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET / PATCH / PUT / DELETE /api/tasks/<pk>/
+    - Note: no custom permission here (AllowAny). If you want to restrict who can PATCH/DELETE,
+      add permission logic later (e.g. only assignee or staff).
+    - perform_update will run assign_user_to_project if assignee changed in the update payload.
+    """
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
     permission_classes = [AllowAny]
-    
+
+    def perform_update(self, serializer):
+        """
+        After saving changes, if assignee changed and the new assignee is linked to a user,
+        ensure that user is assigned to the task.project via assign_user_to_project.
+        """
+        # fetch current instance for comparison
+        instance_before = self.get_object()
+        task = serializer.save()
+
+        # If assignee changed, ensure the member has a user and add to project
+        new_assignee = getattr(task, "assignee", None)
+        if new_assignee is not None and instance_before.assignee != new_assignee:
+            member = new_assignee
+            if hasattr(member, "user") and member.user:
+                assign_user_to_project(task.project, member.user)
+
+
 class MyAssignedTasksView(generics.ListAPIView):
     """
     GET /api/tasks/my/

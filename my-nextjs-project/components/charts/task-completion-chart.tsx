@@ -14,13 +14,13 @@ const data = [
   { name: 'Overdue', value: 12 }
 ];
 
-const COLORS = ['#5b17d6', '#9a43f8', '#d34fee', '#f72b76'];
+const COLORS = ['#FD4A4A', '#3087FF', '#F4B400', '#F72585'];
 
 export default function TaskCompletionChart() {
   const totalTasks = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <div className="p-4 rounded-4 shadow bg-white" style={{ width: '100%'}}>
+    <div className="p-4 bg-white g-charts h-100" style={{ width: '100%'}}>
       <h5 className="text-start fw-bold mb-3">Task Completion Status</h5>
 
       <div style={{ width: '100%', height: 200 }}>

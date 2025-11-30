@@ -199,7 +199,7 @@ export default function ProfileTabs() {
 
         .active {
           color: #8e44ec;
-          border-bottom: 2px solid #8e44ec;
+          border-bottom: 2px solid #2f6ce5;
         }
 
         .avatar {

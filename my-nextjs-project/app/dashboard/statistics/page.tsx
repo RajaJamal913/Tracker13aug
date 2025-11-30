@@ -327,7 +327,7 @@ const handleDropdown = (val: string | null) => {
         .cardTitle {
           font-weight: 600;
           margin-bottom: 1rem;
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .chart-placeholder,

@@ -11,7 +11,7 @@ const tasksList = [
 ]
 export default function TasksList() {
   return (
-    <div className="charts-wrapper p-4 bg-white rounded-4 g-shadow">
+    <div className="charts-wrapper p-4 bg-white rounded-4 g-border">
       <div className="card-body">
         <h6 className="card-title mb-3">Tasks</h6>
 

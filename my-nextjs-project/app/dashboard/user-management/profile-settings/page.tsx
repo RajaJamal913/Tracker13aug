@@ -307,24 +307,24 @@ export default function ProfileTabs() {
           padding: 0.5rem 1rem;
           margin-right: 1rem;
           font-weight: 500;
-          color: #8e44ec;
+          color: #2f6ce5;
           border-bottom: 2px solid transparent;
           transition: all 0.3s;
           cursor: pointer;
         }
 
         .tabButton:hover {
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .active {
               color: #ffffff;
-    border-bottom: 2px solid #8e44ec;
-    background: #8e44ec;
+    border-bottom: 2px solid #2f6ce5;
+    background: #2f6ce5;
     border-radius: 8px;
         }
 .um-btns-wrap {
-    border: 3px solid #8e44ec;
+    border: 3px solid #2f6ce5;
     border-radius: 11px;
 }
         .avatar {
@@ -348,7 +348,7 @@ export default function ProfileTabs() {
         }
 
         .cardHeader {
-          background-color: #8e44ec;
+          background-color: #2f6ce5;
           height: 50px;
           width: 100%;
         }
@@ -356,7 +356,7 @@ export default function ProfileTabs() {
         .cardTitle {
           margin-bottom: 1.5rem;
           font-weight: 600;
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .saveButton {

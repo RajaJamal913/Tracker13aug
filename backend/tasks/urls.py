@@ -7,12 +7,11 @@ from django.urls import path
 from .views import MyAssignedTasksView, TaskCreateView, TaskListView, TaskDetailView
 
 urlpatterns = [
-    path('tasks/', TaskListView.as_view(), name='task-list'),
-    path('tasks/create/', TaskCreateView.as_view(), name='task-create'),
-    path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
-     # ─── NEW: “My Tasks” for any authenticated user ──────────────────────
-    path("tasks/my/", MyAssignedTasksView.as_view(), name="task-my-list"),  # GET /api/tasks/my/
-    
+    path("tasks/", TaskListView.as_view(), name="task-list"),
+    path("tasks/create/", TaskCreateView.as_view(), name="task-create"),
+    path("tasks/<int:pk>/", TaskDetailView.as_view(), name="task-detail"),
+    path("tasks/my/", MyAssignedTasksView.as_view(), name="task-my-list"),
 ]
+
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

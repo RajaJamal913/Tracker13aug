@@ -1,30 +1,28 @@
-"""
-ASGI config for backend project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.0/howto/deployment/asgi/
-"""
-
+# backend/asgi.py
 import os
-
+import django
 from django.core.asgi import get_asgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
-
-application = get_asgi_application()
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
-}
 from channels.routing import ProtocolTypeRouter, URLRouter
-from django.urls import path
-from realtimemonitoring.consumers import MemberStatusConsumer
 
+# import your token middleware and websocket routing
+from chat.middleware import TokenAuthMiddleware         # ensure import path is correct
+import chat.routing                                   # must expose websocket_urlpatterns
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
+django.setup()
+
+# normal Django ASGI app for HTTP
+django_asgi_app = get_asgi_application()
+
+# Single ProtocolTypeRouter: HTTP + WebSocket
 application = ProtocolTypeRouter({
-    "websocket": URLRouter([
-        path("ws/monitor/member/<int:member_id>/", MemberStatusConsumer.as_asgi()),
-    ])
+    "http": django_asgi_app,
+    # Wrap URLRouter with your TokenAuthMiddleware so `scope['user']` is set from ?token=...
+    # That middleware is synchronous in your repo so calling it directly is fine.
+    "websocket": TokenAuthMiddleware(
+        URLRouter(
+            chat.routing.websocket_urlpatterns
+        )
+    ),
 })

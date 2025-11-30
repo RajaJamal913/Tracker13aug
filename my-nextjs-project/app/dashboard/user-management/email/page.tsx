@@ -147,12 +147,12 @@ export default function TimeTracker() {
         }
 
         .tabButton:hover {
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .active {
-          color: #8e44ec;
-          border-bottom: 2px solid #8e44ec;
+          color: #2f6ce5;
+          border-bottom: 2px solid #2f6ce5;
         }
 
         .avatar {
@@ -176,7 +176,7 @@ export default function TimeTracker() {
         }
 
         .cardHeader {
-          background-color: #8e44ec;
+          background-color: #2f6ce5;
           height: 50px;
           width: 100%;
         }
@@ -184,7 +184,7 @@ export default function TimeTracker() {
         .cardTitle {
           margin-bottom: 1.5rem;
           font-weight: 600;
-          color: #8e44ec;
+          color: #2f6ce5;
         }
 
         .saveButton {

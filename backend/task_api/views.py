@@ -177,11 +177,11 @@ def _get_candidate_members(limit=200):
     final.sort(key=lambda x: float(x.get("experience") or 0), reverse=True)
     return final[:limit]
 
-
 class TaskAIViewSet(viewsets.ModelViewSet):
     queryset = TaskAI.objects.all()
     serializer_class = TaskAISerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # NOTE: relaxed to AllowAny per your request (no permission gating)
+    permission_classes = [permissions.AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title", "web_desc", "mobile_desc", "figma_desc", "tags"]
     ordering_fields = ["deadline", "created_at", "priority"]
@@ -226,7 +226,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = super().get_queryset()
-        if user.is_staff:
+        if getattr(user, "is_staff", False):
             return qs
         try:
             user_projects = user.project_set.all()
@@ -246,16 +246,71 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception("Auto-assign on create failed (continuing)")
 
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
+    def perform_update(self, serializer):
+        """
+        Persist updates; if assignee changed to a user instance, ensure that user is assigned to the project
+        (mirrors behavior of perform_create -> assign_user_to_project).
+        Also sets assigned_at/assigned_by where appropriate.
+        """
+        # capture previous state before saving
+        try:
+            before = self.get_object()
+        except Exception:
+            before = None
+
+        task = serializer.save()
+
+        # If assignee changed, attempt to ensure project membership and set assignment metadata
+        try:
+            if before is None or getattr(before, "assignee", None) != getattr(task, "assignee", None):
+                new_assignee = getattr(task, "assignee", None)
+                if new_assignee:
+                    # attempt to add user to project membership (defensive)
+                    try:
+                        # import here to avoid circular import issues if any
+                        from projects.views import assign_user_to_project
+                        assign_user_to_project(getattr(task, "project", None), new_assignee)
+                    except Exception:
+                        logger.exception("assign_user_to_project failed in perform_update")
+
+                    # set assignment metadata if model has fields
+                    try:
+                        # if assigned_at/assigned_by exist, set them if not present
+                        if hasattr(task, "assigned_at"):
+                            task.assigned_at = getattr(task, "assigned_at", timezone.now()) or timezone.now()
+                        if hasattr(task, "assigned_by") and (not getattr(task, "assigned_by", None)):
+                            # prefer created_by if present, else leave as-is
+                            task.assigned_by = getattr(task, "created_by", None) or getattr(task, "assigned_by", None)
+                        # persist minimal fields
+                        update_fields = []
+                        if hasattr(task, "assigned_at"):
+                            update_fields.append("assigned_at")
+                        if hasattr(task, "assigned_by"):
+                            update_fields.append("assigned_by")
+                        if update_fields:
+                            try:
+                                task.save(update_fields=update_fields)
+                            except Exception:
+                                # fallback to full save
+                                try:
+                                    task.save()
+                                except Exception:
+                                    logger.exception("Failed to save assignment metadata after update")
+                    except Exception:
+                        logger.exception("Failed setting assignment metadata in perform_update")
+        except Exception:
+            logger.exception("perform_update post-save actions failed")
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.AllowAny])
     def assign(self, request, pk=None):
         task = self.get_object()
-        allowed = request.user.is_staff or (task.created_by is not None and task.created_by == request.user) or (task.created_by is None and request.user.is_authenticated)
+        allowed = request.user.is_staff or (task.created_by is not None and task.created_by == request.user) or (task.created_by is None and getattr(request.user, "is_authenticated", False))
         if not allowed:
             return Response({"detail": "Not allowed. Only staff or the task creator may assign tasks."}, status=status.HTTP_403_FORBIDDEN)
 
         locked = bool(getattr(task, "assignment_locked", False)) or bool(getattr(task, "ai_suggested", False))
         force_override = self._as_bool(request.data.get("force", False))
-        if locked and not request.user.is_staff and not force_override:
+        if locked and not getattr(request.user, "is_staff", False) and not force_override:
             return Response({"detail": "Task is locked from reassignment (AI-assigned). Contact staff to override."}, status=status.HTTP_403_FORBIDDEN)
 
         assignee_id = request.data.get("assignee_id")
@@ -282,7 +337,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
             return Response({"detail": "assignee not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         now = timezone.now()
-        update_values = {"assignee_id": assignee.pk, "assigned_by_id": request.user.pk, "assigned_at": now}
+        update_values = {"assignee_id": assignee.pk, "assigned_by_id": request.user.pk if getattr(request.user, "is_authenticated", False) else None, "assigned_at": now}
 
         if "ai_suggested" in request.data:
             update_values["ai_suggested"] = self._as_bool(request.data.get("ai_suggested"))
@@ -296,7 +351,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         if "ai_meta" in request.data:
             update_values["ai_meta"] = request.data.get("ai_meta")
 
-        if request.user.is_staff and self._as_bool(request.data.get("force", False)):
+        if getattr(request.user, "is_staff", False) and self._as_bool(request.data.get("force", False)):
             if hasattr(task, "assignment_locked"):
                 update_values["assignment_locked"] = False
             else:
@@ -308,7 +363,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
 
         try:
             TaskAI.objects.filter(pk=task.pk).update(**update_values)
-            logger.info("Assign update: task %s set assignee_id=%s by user %s", task.pk, assignee.pk, request.user.pk)
+            logger.info("Assign update: task %s set assignee_id=%s by user %s", task.pk, assignee.pk, getattr(request.user, "pk", None))
         except Exception:
             logger.exception("Assign update failed for task %s", task.pk)
             return Response({"detail": "Failed to persist assignment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -328,7 +383,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(fresh)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=["get"], permission_classes=[permissions.AllowAny])
     def my(self, request):
         user = request.user
         qs = self.get_queryset().filter(Q(created_by=user) | Q(assignee=user)).distinct()
@@ -374,7 +429,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs.distinct(), many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="auto-assign")
+    @action(detail=False, methods=["post"], permission_classes=[permissions.AllowAny], url_path="auto-assign")
     def auto_assign(self, request):
         tasks = request.data.get("tasks") or []
         if not isinstance(tasks, list) or len(tasks) == 0:
@@ -845,12 +900,12 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         diag["steps"].append("no resolution found")
         return None, diag
 
-    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="stats")
+    @action(detail=False, methods=["get"], permission_classes=[permissions.AllowAny], url_path="stats")
     def stats(self, request):
         total_created = TaskAI.objects.filter(created_by=request.user).count()
         return Response({"total_created": total_created}, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="created")
+    @action(detail=False, methods=["get"], permission_classes=[permissions.AllowAny], url_path="created")
     def created(self, request):
         qs = TaskAI.objects.filter(created_by=request.user).order_by("-created_at")
         page = self.paginate_queryset(qs)
@@ -962,7 +1017,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         logger.info("Auto-assign did not resolve a User for Task %s; diag=%s", task.pk, diag)
         return None
 
-    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
+    @action(detail=True, methods=["get"], permission_classes=[permissions.AllowAny], url_path="reviews")
     def reviews(self, request, pk=None):
         try:
             task = TaskAI.objects.get(pk=pk)
@@ -976,7 +1031,7 @@ class TaskAIViewSet(viewsets.ModelViewSet):
         ser = TaskReviewSerializer(qs, many=True, context={"request": request, "task": task})
         return Response(ser.data)
 
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated], url_path="reviews")
+    @action(detail=True, methods=["post"], permission_classes=[permissions.AllowAny], url_path="reviews")
     def create_review(self, request, pk=None):
         try:
             task = TaskAI.objects.get(pk=pk)

@@ -267,14 +267,10 @@ export default function NotificationDropdown() {
         }}
       >
         <div className="notification-bell position-relative">
-          <Image 
-            src="/assets/images/h-bell-icon-new.webp" 
-            alt="Notifications" 
-            width={24} 
-            height={24}
-            className="transition-all"
-            style={{ filter: 'brightness(0.8)' }}
-          />
+         <svg width="10" height="11" viewBox="0 0 10 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.6875 8.27778H9.5L8.70973 7.49726C8.4954 7.28559 8.375 6.99849 8.375 6.69914V4.94445C8.375 3.49309 7.43584 2.25838 6.125 1.80079V1.61111C6.125 0.997461 5.62132 0.5 5 0.5C4.37868 0.5 3.875 0.997461 3.875 1.61111V1.80079C2.56416 2.25838 1.625 3.49309 1.625 4.94445V6.69914C1.625 6.99849 1.5046 7.28559 1.29027 7.49726L0.5 8.27778H3.3125M6.6875 8.27778V8.83333C6.6875 9.75381 5.93198 10.5 5 10.5C4.06802 10.5 3.3125 9.75381 3.3125 8.83333V8.27778M6.6875 8.27778H3.3125" stroke="#FFB300" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+
           {loading ? (
             <Spinner 
               animation="border" 

@@ -31,29 +31,75 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 
+# accounts/views.py
 
-# Set up logging
+from django.utils import timezone
+from projects.models import Member  # <-- make sure this import exists
+import logging
+from django.utils import timezone
+
+from projects.models import Invitation
+from projects.utils import accept_invite_for_user
+
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
 
     def create(self, req, *args, **kwargs):
+        logger = logging.getLogger(__name__)
         serializer = self.get_serializer(data=req.data)
         serializer.is_valid(raise_exception=True)
+
+        # Create the user
         user = serializer.save()
-       
-        return Response({
-            
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-            }
-        }, status=status.HTTP_201_CREATED)
+
+        # Handle invite acceptance ONLY IF invite token is provided
+        invite_token = (
+            req.data.get("invite")
+            or req.data.get("invite_token")
+            or req.data.get("token")
+        )
+
+        if invite_token:
+            try:
+                # find invite by token (do not assume it exists)
+                invite = (
+                    Invitation.objects.select_related("project", "created_by")
+                    .filter(token=invite_token)
+                    .first()
+                )
+
+                if invite:
+                    # require the invite to be for the same email (case-insensitive)
+                    invite_email = getattr(invite, "email", None)
+                    if invite_email and invite_email.lower() == (user.email or "").lower():
+                        # centralized helper does the idempotent acceptance (creates Member, attaches to project, sets flags)
+                        accept_invite_for_user(invite, user)
+                    else:
+                        logger.debug(
+                            "Invite token provided at registration but emails did not match (token=%s invite_email=%s user_email=%s). Ignoring acceptance.",
+                            invite_token,
+                            invite_email,
+                            user.email,
+                        )
+                else:
+                    logger.debug("No invitation found for token=%s during registration", invite_token)
+            except Exception:
+                logger.exception("Error processing invite token=%s for new user=%s", invite_token, getattr(user, "pk", None))
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                }
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 # views.py
 from rest_framework.authtoken.models import Token
-
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
@@ -62,15 +108,45 @@ class LoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         
         if not serializer.is_valid():
-            print("Validation errors:", serializer.errors)
+            logger.debug("Login validation errors: %s", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         user = serializer.validated_data["user"]
-        
-        # Clean up existing tokens
+
+        # Clean up existing tokens and create a new one
         Token.objects.filter(user=user).delete()
         token = Token.objects.create(user=user)
-        
+
+        # Handle invitation acceptance for existing user
+        invite_token = (
+            request.data.get("invite") or
+            request.data.get("invite_token") or
+            request.data.get("token")
+        )
+
+        if invite_token:
+            try:
+                invite = Invitation.objects.select_related("project", "created_by").filter(token=invite_token).first()
+                if invite:
+                    # Only accept if the invite email matches the user's email
+                    invite_email = getattr(invite, "email", None)
+                    if invite_email and invite_email.lower() == (user.email or "").lower():
+                        accept_invite_for_user(invite, user)
+                        logger.info(
+                            "Invite accepted for existing user %s with token %s",
+                            user.username,
+                            invite_token
+                        )
+                    else:
+                        logger.debug(
+                            "Invite token provided but email mismatch (token=%s, invite_email=%s, user_email=%s)",
+                            invite_token, invite_email, user.email
+                        )
+                else:
+                    logger.debug("No invitation found for token=%s during login", invite_token)
+            except Exception:
+                logger.exception("Error processing invite token=%s for existing user=%s", invite_token, user.username)
+
         return Response({
             "token": token.key,
             "user": {
@@ -79,7 +155,6 @@ class LoginView(generics.GenericAPIView):
                 "email": user.email,
             }
         })
-
 class WhoAmIView(APIView):
     permission_classes = [IsAuthenticated]
 

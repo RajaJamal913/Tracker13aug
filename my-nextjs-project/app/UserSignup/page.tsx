@@ -1,15 +1,30 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import React, { useEffect, useState } from "react";
+import React, { JSX, useEffect, useState } from "react";
 import Image from "next/image";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { useRouter } from "next/navigation";
 
 type ErrorsMap = Record<string, string[]>;
 
-export default function SignupPage() {
+export default function SignupPage(): JSX.Element {
   const router = useRouter();
+
+  // derive invite token on client to avoid prerender/useSearchParams SSR issues
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Only run in browser — window is available here
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("invite") || params.get("token") || null;
+      setInviteToken(token);
+    } catch (err) {
+      setInviteToken(null);
+    }
+  }, []);
+
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
   // form state
@@ -26,9 +41,9 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<ErrorsMap>({});
 
   useEffect(() => {
-    // any bootstrap js can be imported if you need modals/toasts etc.
-    // import("bootstrap/dist/js/bootstrap.bundle.min.js");
-  }, []);
+    // optional: prefill email from invite metadata if you want
+    // e.g. fetch invite details and setEmail(...)
+  }, [inviteToken]);
 
   const clearFieldError = (field: string) => {
     setErrors((prev) => {
@@ -37,14 +52,6 @@ export default function SignupPage() {
       delete copy[field];
       return copy;
     });
-  };
-
-  const focusFirstError = (errs: ErrorsMap) => {
-    const keys = Object.keys(errs);
-    if (keys.length === 0) return;
-    const first = keys[0];
-    const el = document.getElementById(first);
-    if (el) (el as HTMLElement).focus();
   };
 
   const normalizeErrors = (data: any): ErrorsMap => {
@@ -63,20 +70,16 @@ export default function SignupPage() {
     if (typeof data === "object") {
       for (const [k, v] of Object.entries(data)) {
         if (k === "detail") continue;
-        if (Array.isArray(v)) {
-          out[k] = v.map((x) => String(x));
-        } else if (typeof v === "object" && v !== null) {
-          out[k] = [JSON.stringify(v)];
-        } else {
-          out[k] = [String(v)];
-        }
+        if (Array.isArray(v)) out[k] = v.map((x) => String(x));
+        else if (typeof v === "object" && v !== null) out[k] = [JSON.stringify(v)];
+        else out[k] = [String(v)];
       }
     }
 
     return out;
   };
 
-  const deriveUsername = () => {
+  const deriveUsername = (): string => {
     if (firstName && firstName.trim()) return firstName.trim();
     if (email && email.includes("@")) return email.split("@")[0];
     return `user${Math.floor(Math.random() * 900) + 100}`;
@@ -85,10 +88,11 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
+
     setMessage("");
     setErrors({});
 
-    // client side validation
+    // basic client validation
     if (!firstName.trim() || !email.trim() || !password) {
       setMessage("❌ Please fill all required fields.");
       const tmp: ErrorsMap = {};
@@ -96,7 +100,6 @@ export default function SignupPage() {
       if (!email.trim()) tmp.email = ["Email is required."];
       if (!password) tmp.password = ["Password is required."];
       setErrors(tmp);
-      focusFirstError(tmp);
       return;
     }
 
@@ -104,33 +107,34 @@ export default function SignupPage() {
       const tmp: ErrorsMap = { password: ["Passwords do not match."] };
       setErrors(tmp);
       setMessage("❌ Passwords do not match.");
-      focusFirstError(tmp);
       return;
     }
 
     setLoading(true);
-
     const usernameToSend = deriveUsername();
 
     try {
+      const payload: any = {
+        username: usernameToSend,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password,
+        password2: confirmPassword,
+      };
+      if (inviteToken) payload.invite = inviteToken;
+
       const res = await fetch(`${API_BASE}/api/auth/register/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: usernameToSend,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          password,
-          password2: confirmPassword,
-        }),
+        body: JSON.stringify(payload),
       });
 
       let data: any = null;
       try {
         data = await res.json();
-      } catch (err) {
-        console.error("Failed to parse JSON response", err);
+      } catch {
+        data = null;
       }
 
       if (!res.ok) {
@@ -149,23 +153,32 @@ export default function SignupPage() {
           }
         }
 
-        focusFirstError(normalized);
         setLoading(false);
         return;
       }
 
-      // Success path - adapt according to your backend response
+      // If backend returned a token (auto-login), persist it
       if (data && data.token) {
-        localStorage.setItem("token", data.token);
-        router.push("/dashboard");
+        try {
+          localStorage.setItem("token", data.token);
+          localStorage.setItem("isLoggedIn", "1");
+          if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+        } catch {
+          /* ignore storage errors */
+        }
+
+        setMessage("✅ Account created and logged in. Redirecting...");
+        // backend likely attached the invite if provided; safe to go to dashboard
+        setTimeout(() => router.replace("/dashboard"), 800);
         return;
       }
 
-      // if backend returns created user but no token
-      setMessage("✅ Account created successfully. Redirecting to login...");
-      router.push("/userLogin");
+      // No token returned — user must log in
+      setMessage("✅ Account created. Please log in to continue.");
+      const next = inviteToken ? `/userLogin?invite=${encodeURIComponent(inviteToken)}` : "/userLogin";
+      setTimeout(() => router.push(next), 900);
     } catch (err) {
-      console.error(err);
+      console.error("Signup error", err);
       setMessage("❌ Unable to reach server. Check API URL or network.");
     } finally {
       setLoading(false);
@@ -184,31 +197,25 @@ export default function SignupPage() {
     );
   };
 
+  const loginHref = `/userLogin${inviteToken ? `?invite=${encodeURIComponent(inviteToken)}` : ""}`;
+
   return (
     <section className="login-sec">
       <div className="login-container sign-up-container container">
         <div className="login-card">
-          {/* Logo */}
-          <Image
-            className="login-logo img-fluid"
-            src="/assets/images/new/login-logo.png"
-            alt="logo"
-            width={200}
-            height={80}
-          />
-
+          <Image className="login-logo img-fluid" src="/assets/images/new/login-logo.png" alt="logo" width={200} height={80} />
           <h2 className="login-title">Sign Up</h2>
           <p className="login-subtitle">Fill form to create your account.</p>
 
-          {/* message / non-field errors */}
-          {message && (
-            <div className={`alert ${Object.keys(errors).length ? "alert-danger" : "alert-info"} mt-2`} role="alert">
-              {message}
+          {inviteToken && (
+            <div className="alert alert-info">
+              You are signing up using an invite. After registration your invite will be attached to this account.
             </div>
           )}
 
+          {message && <div className={`alert ${Object.keys(errors).length ? "alert-danger" : "alert-info"} mt-2`}>{message}</div>}
+
           <form onSubmit={handleSubmit} noValidate>
-            {/* First Name */}
             <div className="mb-3">
               <label htmlFor="first_name" className="form-label small">
                 First Name
@@ -228,7 +235,6 @@ export default function SignupPage() {
               {renderFieldError("first_name")}
             </div>
 
-            {/* Last Name */}
             <div className="mb-3">
               <label htmlFor="last_name" className="form-label small">
                 Last Name
@@ -247,7 +253,6 @@ export default function SignupPage() {
               {renderFieldError("last_name")}
             </div>
 
-            {/* Email */}
             <div className="mb-3 icon-input">
               <label htmlFor="email" className="form-label small">
                 Email Address
@@ -268,7 +273,6 @@ export default function SignupPage() {
               {renderFieldError("email")}
             </div>
 
-            {/* Password */}
             <div className="mb-3 icon-input">
               <label htmlFor="password" className="form-label small">
                 Password
@@ -292,7 +296,6 @@ export default function SignupPage() {
                   onClick={() => setShowPassword((s) => !s)}
                   className="btn btn-link position-absolute end-0 top-50 translate-middle-y me-3 p-0"
                   style={{ textDecoration: "none" }}
-                  aria-pressed={showPassword}
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -300,7 +303,6 @@ export default function SignupPage() {
               {renderFieldError("password")}
             </div>
 
-            {/* Confirm Password */}
             <div className="mb-3 icon-input">
               <label htmlFor="password2" className="form-label small">
                 Confirm Password
@@ -329,17 +331,48 @@ export default function SignupPage() {
 
             <div className="mt-3 text-center no-account-wrapper">
               <small>
-                Already have an account? <a href="/userLogin" className="fw-bold">Sign In</a>
+                Already have an account?{" "}
+                <a href={loginHref} className="fw-bold">
+                  Sign In
+                </a>
               </small>
             </div>
           </form>
         </div>
 
-        {/* Signup image */}
         <div className="login-image-wrap text-end d-none d-md-block">
           <Image className="img-fluid" src="/assets/images/new/signup-img.png" alt="signup" width={600} height={600} />
         </div>
       </div>
+
+      <style jsx>{`
+        .login-sec {
+          padding: 40px 0;
+        }
+        .login-container {
+          display: flex;
+          gap: 2rem;
+          align-items: center;
+          justify-content: center;
+        }
+        .login-card {
+          max-width: 520px;
+          padding: 28px;
+          border-radius: 8px;
+          background: #fff;
+        }
+        .login-image-wrap {
+          flex: 1 1 40%;
+        }
+        @media (max-width: 992px) {
+          .login-container {
+            flex-direction: column;
+          }
+          .login-image-wrap {
+            display: none;
+          }
+        }
+      `}</style>
     </section>
   );
 }

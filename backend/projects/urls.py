@@ -15,6 +15,7 @@ from .views import (
     get_members,
     UserRoleUpdateView,
     WhoAmIView,
+    get_members_who_invited_me
 )
 
 urlpatterns = [
@@ -37,6 +38,7 @@ urlpatterns = [
     # NEW: whoami endpoint for frontend to fetch username + member_profile
     # Example: GET /auth/whoami/
     path('auth/whoami/', WhoAmIView.as_view(), name='whoami'),
+    path("members/who-invited-me/", get_members_who_invited_me, name="members-who-invited-me"),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

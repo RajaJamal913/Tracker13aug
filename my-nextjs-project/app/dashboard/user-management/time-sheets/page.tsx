@@ -71,9 +71,9 @@ export default function TimesheetSettings() {
   }
 
   return (
-    <div className="container-fluid py-5">
-      <div className="card shadow rounded-3">
-        <div className="card-header g-theme-bg text-white">
+    <div className="container-fluid">
+      <div className="card rounded-3">
+        <div className="card-header g-theme-bg">
           <h5 className="mb-0">Timesheet Settings</h5>
         </div>
         <div className="card-body">

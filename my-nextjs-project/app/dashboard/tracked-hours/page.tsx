@@ -214,7 +214,7 @@ export default function TimeRequestTabs() {
   return (
     <div className="container-fluid py-4">
       <div className="row mb-4">
-        <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
+        <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <h2 className="page-heading-wrapper">Tracked Hours</h2>
           <div className="d-flex justify-content-between align-items-center gap-2">
             <button className="btn g-btn" onClick={exportCSV}>Export</button>
@@ -241,9 +241,9 @@ export default function TimeRequestTabs() {
       ) : groups.length === 0 ? (
         <p>No tracked hours found for selected filters.</p>
       ) : (
-        <div className="table-responsive g-table-wrap g-t-scroll">
+        <div className="table-responsive g-table-wrap ">
           <h1 className="table-heading">Tracked Hours Report</h1>
-          <table className="w-full table g-table">
+          <table className="w-full table g-table min-w-10">
             <thead>
               <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
                 <th>Project</th>

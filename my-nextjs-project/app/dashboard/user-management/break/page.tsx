@@ -525,40 +525,46 @@ export default function Home() {
   }
 
   return (
-    <div className="container py-5">
-      <div className="row mb-3">
-        <div className="col-md-8">
+    <div className="container">
+      <div className="row mb-3 g-4">
+        <div className="col-lg-12">
           <Card className="p-3">
-            <div className="d-flex align-items-center gap-2">
-              <strong>Select Project</strong>
-              <select className="form-select w-auto" value={projectId ?? ''} onChange={(e) => {
+            <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div className="">
+                <strong>Select Project</strong>
+                <select className="form-select w-auto" value={projectId ?? ''} onChange={(e) => {
                 const v = e.target.value
                 setProjectId(v ? Number(v) : null)
               }}>
                 <option value=''>-- choose project --</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name ?? `Project ${p.id}`}</option>)}
               </select>
+              </div>
+              
+<div className="d-flex flex-wrap gap-2">
 
-              <button className="btn btn-outline-secondary ms-2" onClick={() => loadProjects()}>
+  <button className="btn btn g-btn ms-2" onClick={() => loadProjects()}>
                 {loadingProjects ? (<><Spinner size="sm" /> Refreshing</>) : 'Refresh Projects'}
               </button>
 
-              <button className="btn btn-primary ms-2" onClick={() => loadAll(projectId)}>
+              <button className="btn g-btn ms-2" onClick={() => loadAll(projectId)}>
                 { (loadingWork || loadingBreak || loadingPolicies) ? (<><Spinner size="sm" /> Refreshing</>) : 'Refresh Status' }
               </button>
 
-              <button className="btn btn-sm btn-outline-dark ms-2" onClick={() => {
+              <button className="btn g-btn ms-2 d-flex gap-1" onClick={() => {
                 pushDebug('Open browser devtools -> Network & Console to inspect requests/responses.')
               }}>
                 <FaBug /> Debug
               </button>
+</div>
+              
             </div>
 
             {projectsError && <Alert variant="warning" className="mt-2">{projectsError}</Alert>}
           </Card>
         </div>
 
-        <div className="col-md-4">
+        <div className="col-lg-12">
           <Card className="p-3">
             <div><strong>Selected</strong></div>
             <div>{projectId ? `Project ${projectId}` : 'None'}</div>
@@ -568,7 +574,7 @@ export default function Home() {
 
       <div className="row">
         <div className="col-xl-4">
-          <Card className="shadow mb-4 border-0">
+          <Card className="mb-4">
             <Card.Body>
               <Card.Title className="text-center mb-4">
                 {breakData?.status === 'active' ? 'On Break' : 'Work Session'}
@@ -601,7 +607,7 @@ export default function Home() {
                   </RBButton>
                 ) : (
                   <>
-                    <RBButton variant={workData?.status === 'active' ? 'theme-bg text-white d-flex align-items-center' : 'success'} onClick={workData?.status === 'active' ? handleStopWork : handleStartWork} disabled={actionLoading}>
+                    <RBButton variant={workData?.status === 'active' ? 'theme-bg text-white d-flex align-items-center' : 'success d-flex align-items-center'} onClick={workData?.status === 'active' ? handleStopWork : handleStartWork} disabled={actionLoading}>
                       {actionLoading && <Spinner as="span" animation="border" size="sm" className="me-2" />}
                       {workData?.status === 'active' ? <FaPause className="me-1" /> : <FaPlay className="me-1" />}
                       {workData?.status === 'active' ? 'Pause Work' : 'Start Work'}
@@ -618,7 +624,7 @@ export default function Home() {
         </div>
 
         <div className="col-xl-8">
-          <Card className="shadow mb-4 border-0">
+          <Card className="mb-4">
             <Card.Body>
               <div className="mb-4 d-flex justify-content-between align-items-center">
                 <span>Break Policies</span>
@@ -629,7 +635,7 @@ export default function Home() {
               {policiesError && <Alert variant="warning">{policiesError}</Alert>}
 
               <div className="table-responsive">
-                <table className="table table-bordered text-center mb-0">
+                <table className="table g-table text-center mb-0">
                   <thead className="table-light">
                     <tr><th>Name</th><th>Members Count</th><th>Max Min/Day</th><th>Type</th><th>Actions</th></tr>
                   </thead>
@@ -756,9 +762,9 @@ export default function Home() {
       {/* Debug Panel */}
       <div className="mt-4">
         <Card className="p-3">
-          <div className="d-flex justify-content-between align-items-center mb-2">
+          <div className="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
             <strong>Client Debug (last requests)</strong>
-            <div>
+            <div className='d-flex flex-wrap gap-2'>
               <button className="btn btn-sm btn-outline-secondary me-2" onClick={() => { setDebugLogs([]); pushDebug('Cleared logs') }}>Clear</button>
               <a className="btn btn-sm btn-outline-primary" href="#" onClick={(e) => { e.preventDefault(); pushDebug('Open devtools network tab to inspect request/response details') }}>Console tips</a>
             </div>

@@ -119,12 +119,13 @@ export default function TrackingPage() {
 
   // 5) Main grid once data is available
   return (
-    <Container fluid className="py-4 px-0">
-      <h2 className="mb-4 text-center">Team Tracking Overview</h2>
+    <Container fluid className="pb-4 ">
+      
+      <h2 className="page-heading-wrapper mb-4">Team Tracking Overview</h2>
       <Row>
         {members.map((member) => (
           <Col key={member.id} lg={4} md={6} sm={12} className="mb-4">
-            <Card className="border-0 g-shadow h-100 shadow">
+            <Card className="h-100">
               <Card.Body>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <strong>{member.name}</strong>

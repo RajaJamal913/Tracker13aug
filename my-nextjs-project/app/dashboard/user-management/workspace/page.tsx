@@ -219,11 +219,11 @@ export default function ProfileTabs() {
         }
 
         .cardWrapper {
-          margin-top: 1rem;
-          border-radius: 10px;
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          background-color: #fff;
+             background-color: #fff;
+    border-radius: 10px;
+    margin-top: 1rem;
+    overflow: hidden;
+    border: 1px solid lightgray;
         }
 
         .cardHeader {

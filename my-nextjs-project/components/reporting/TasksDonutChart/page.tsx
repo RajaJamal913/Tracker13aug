@@ -28,7 +28,7 @@ export default function TasksDonutChart() {
   const totalTasks = chartData.reduce((sum, entry) => sum + entry.value, 0);
 
   return (
-    <div className="charts-wrapper p-4 bg-white rounded-4 g-border TasksDonutChart" style={{ maxWidth: '400px' }}>
+    <div className="charts-wrapper p-4 bg-white rounded-4 g-border TasksDonutChart" style={{  }}>
       <h6 className="fw-semibold mb-3">Tasks</h6>
 
       <ResponsiveContainer width="100%" height={200}>
@@ -46,10 +46,10 @@ export default function TasksDonutChart() {
           </Pie>
           <Legend
             verticalAlign="top"
-            align="right"
+            align="center"
             iconType="circle"
             formatter={(value) => (
-              <span style={{ color: '#000', fontSize: '13px' }}>{value}</span>
+              <span style={{ color: '#000', fontSize: '13px',marginBottom:"15px" }}>{value}</span>
             )}
           />
         </PieChart>

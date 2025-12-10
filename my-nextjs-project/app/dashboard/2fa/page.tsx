@@ -210,7 +210,7 @@ export default function TwoFASettings(): JSX.Element {
           (Google Authenticator, Authy, etc.).
         </p>
 
-        <div className="mb-3">
+        <div className="mb-3 d-flex gap-2 flex-wrap">
           <button className="btn btn-outline-primary me-2" onClick={startSetup} disabled={isLoading}>
             {isLoading ? "Working..." : "Set up Authenticator"}
           </button>

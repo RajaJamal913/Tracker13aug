@@ -54,7 +54,7 @@ export default function TimeTrackerPage() {
 
   return (
     <>
-      <div className="container py-5">
+      <div className="container py-3">
         <div className="row mb-3">
           <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
             {/* <TimeCount /> */}
@@ -76,8 +76,8 @@ export default function TimeTrackerPage() {
           </div>
         </div>
 
-        <div className="table-responsive g-table-wrap g-t-scroll">
-          <Table hover className="text-center g-table">
+        <div className="table-responsive g-table-wrap">
+          <Table hover className="text-center g-table min-w-10">
             <thead>
               <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
                 <th>Members</th>
@@ -110,7 +110,7 @@ export default function TimeTrackerPage() {
       {showModal && (
         <div className="modal show d-block" tabIndex={-1} role="dialog">
           <div className="modal-dialog" role="document">
-            <div className="modal-content border-0 g-shadow rounded-4 g-modal-conntent-wrapper">
+            <div className="modal-content border-0 rounded-4 g-modal-conntent-wrapper shadow">
               <div className="modal-header">
                 <h5 className="modal-title">Create Schedule</h5>
                 <button type="button" className="btn-close" onClick={handleClose}></button>
@@ -145,7 +145,7 @@ export default function TimeTrackerPage() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn g-btn" onClick={handleClose}>Close</button>
-                <button type="button" className="btn g-btn-secondary">Save Schedule</button>
+                <button type="button" className="btn g-btn">Save Schedule</button>
               </div>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default function TimeTrackerPage() {
       {showShareModal && (
         <div className="modal show d-block" tabIndex={-1} role="dialog">
           <div className="modal-dialog modal-dialog-centered" role="document">
-            <div className="modal-content border-0 g-shadow rounded-4 g-modal-conntent-wrapper">
+            <div className="modal-content border-0 rounded-4 g-modal-conntent-wrapper shadow">
               <div className="modal-header">
                 <h5 className="modal-title text-primary">Share Report</h5>
                 <button type="button" className="btn-close" onClick={() => setShowShareModal(false)}></button>

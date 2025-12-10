@@ -186,14 +186,15 @@ export default function AIPowered() {
                   showClear
                   panelClassName="shadow-lg border-0"
                 />
-              </div>
-              {selectedProject && (
+                 {/* {selectedProject && (
                 <div className="text-end">
                   <div className="text-muted small">Selected Project</div>
                   <div className="fw-bold text-dark">{selectedProject.name}</div>
                   <div className="small mt-1">{renderDeadlineStatus(selectedProject)}</div>
                 </div>
-              )}
+              )} */}
+              </div>
+             
             </div>
             <button className="btn g-btn">View Specific Members Productivity</button>
           </div>
@@ -214,7 +215,7 @@ export default function AIPowered() {
                             <path fillRule="evenodd" clipRule="evenodd" d="M9.9475 10.7252C9.9475 11.301 10.4142 11.7677 10.99 11.7677C11.5657 11.7677 12.0324 11.301 12.0324 10.7252V7.5978C12.0324 7.02207 11.5657 6.55533 10.99 6.55533C10.4142 6.55533 9.9475 7.02207 9.9475 7.5978V10.7252ZM12.0324 13.8409C12.0324 13.2652 11.5657 12.7985 10.99 12.7985C10.4142 12.7985 9.9475 13.2652 9.9475 13.8409V13.8526C9.9475 14.4284 10.4142 14.8951 10.99 14.8951C11.5657 14.8951 12.0324 14.4284 12.0324 13.8526V13.8409ZM8.25594 2.03243C9.44753 -0.112374 12.5321 -0.112374 13.7236 2.03243L20.605 14.4188C21.763 16.5033 20.2556 19.065 17.8711 19.065H4.10847C1.72387 19.065 0.216562 16.5033 1.37462 14.4188L8.25594 2.03243Z" fill="#CC4444" />
                           </svg>
                         </div>
-                        <h4 className="fw-bold mb-1">{p ? p.name : "Website Design"}</h4>
+                        <h4 className="fw-medium mb-1">{p ? p.name : "Website Design"}</h4>
                       </div>
 
                       <div className="d-flex align-items-center gap-2 delay-info-wrapper">

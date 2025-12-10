@@ -71,10 +71,10 @@ export default function Home() {
 
   return (
     <div className="container-fluid">
-      <div className="row mt-4 mb-4">
+      <div className="row mb-4">
         {projects.map((proj) => (
           <div key={proj.id} className="col-lg-6 mb-5">
-            <Card className="workspace-card ws-2 g-shadow rounded-2 border-0">
+            <Card className="workspace-card ws-2 ">
               <Card.Body className="workspace-card-inner p-0">
                 <div className="d-flex justify-content-between flex-wrap gap-1 mb-4">
                   <p className="workspace-role mb-3">

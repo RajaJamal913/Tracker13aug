@@ -59,10 +59,10 @@ const ScreenshotSettings = () => {
   const [currentMode, setCurrentMode] = useState<string>('no-screenshot');
 
   return (
-    <div className="container mt-4">
-      <div className="cardWrapper">
+    <div className="container">
+      <div className="cardWrapper mt-0">
         <div className="cardHeader d-flex justify-content-start align-items-center p-4" style={{backgroundColor:"rgb(168, 85, 247)"}}><h5 className="text-white m-0">Break Policy</h5></div>
-        <div className="card-body p-4">
+        <div className="card-body p-lg-4 p-3">
           <h2 className="card-title">Screenshot</h2>
           <p className="card-text">Set the number of screenshots taken in a 10-minute interval.</p>
           

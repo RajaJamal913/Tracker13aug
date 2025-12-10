@@ -281,12 +281,13 @@ export default function NotificationDropdown() {
           ) : unreadCount > 0 ? (
             <Badge 
               bg="danger" 
-              className="position-absolute top-0 end-0 badge-pulse"
+              className="position-absolute end-0 badge-pulse"
               style={{ 
                 fontSize: '0.7rem',
                 padding: '0.25em 0.4em',
                 minWidth: '1.2em',
-                transform: 'translate(25%, -25%)'
+                transform: 'translate(25%, -25%)',
+                top:'-13px'
               }}
             >
               {unreadCount > 99 ? '99+' : unreadCount}

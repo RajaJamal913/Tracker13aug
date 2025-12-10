@@ -143,8 +143,8 @@ export default function ProjectsPage() {
         type === "checkbox"
           ? checked
           : ["time_estimate", "budget_estimate"].includes(name)
-          ? Number(value) || 0
-          : value,
+            ? Number(value) || 0
+            : value,
     }));
   };
 
@@ -228,16 +228,15 @@ export default function ProjectsPage() {
   }));
 
   return (
-    <div className="p-9 w-full mx-auto rounded-xl ">
+    <div className="px-0 py-3 w-full mx-auto rounded-xl ">
       <div className="flex justify-between tabContainer profile-settings-tabs-wrapper mb-4">
         <div className="d-flex um-btns-wrap">
           {["Active", "Inactive"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 tabButton py-2 ${
-                activeTab === tab ? " active" : "text-gray-500"
-              }`}
+              className={`px-4 tabButton py-2 ${activeTab === tab ? " active" : "text-gray-500"
+                }`}
             >
               {tab}
             </button>
@@ -245,7 +244,7 @@ export default function ProjectsPage() {
         </div>
 
         <div className="flex items-center flex-wrap gap-3 ">
-          <button className="g-btn d-flex align-items-center rounded-2" onClick={openModal}>
+          <button className="g-btn d-flex align-items-center rounded-2 gap-0" onClick={openModal}>
             <Plus size={16} className="mr-2" /> Create Project
           </button>
 
@@ -271,8 +270,8 @@ export default function ProjectsPage() {
       </div>
 
       {/* Projects Table */}
-      <div className="border rounded-lg shadow-md overflow-hidden my-4">
-        <table className="w-full g-table">
+      <div className="table-responsive ">
+        <table className="table g-table min-w-10">
           <thead className="bg-[#9A4AFD] text-white">
             <tr>
               <th className="px-4 py-3">Project</th>
@@ -281,6 +280,7 @@ export default function ProjectsPage() {
               <th className="px-4 py-3">Notes</th>
               <th className="px-4 py-3">Estimate Hours</th>
               <th className="px-4 py-3">Budget</th>
+              <th className="px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -312,6 +312,17 @@ export default function ProjectsPage() {
                 <td className="px-4 py-3 text-gray-500">{p.notes || "No Data"}</td>
                 <td className="px-4 py-3">{p.time_estimate}</td>
                 <td className="px-4 py-3">${p.budget_estimate}</td>
+                <td className="px-4 py-3">
+                  <div className="d-flex flex-wrap gap-2">
+                     <button className="btn btn-primary btn-sm">
+                    Edit
+                  </button>
+                  <button className="btn btn-danger btn-sm">
+                    Delete
+                  </button>
+                  </div>
+                 
+                </td>
               </tr>
             ))}
           </tbody>

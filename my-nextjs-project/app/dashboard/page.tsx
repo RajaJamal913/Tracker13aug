@@ -391,12 +391,12 @@ export default function Home() {
     <>
       <RoleSelectorModal show={roleModalOpen} onConfirm={handleRoleConfirm} onClose={handleRoleCancel} />
 
-      <main className=" min-vh-100 p-4">
+      <main className=" min-vh-100">
         <div className="container-fluid">
           {/* Info Cards */}
-          <div className="mb-5 row sprints-wrapper">
+          <div className="mb-4 row sprints-wrapper g-4 mt-4">
             <div className="col-lg-12">
-              <div className="d-flex align-items-center gap-3 mb-4">
+              <div className="d-flex align-items-center gap-3">
                 <FileText className="text-primary" size={24} />
                 <h1 className="h4 mb-0" style={{ color: "#0066cc" }}>
                   Time Estimation Accuracy
@@ -448,14 +448,20 @@ export default function Home() {
           </div>
 
           {/* First Row */}
-          <div className="row mb-4 ">
+          <div className="row mb-4 g-4">
             {/* Tasks by Assignee */}
-            <div className="col-lg-3 col-md-6 mb-4">
+            <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 task-by-assignee rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="me-2" style={{ width: "20px", height: "20px" }}>
-                      {/* svg */}
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M17.25 15.7502V14.2502C17.2495 13.5855 17.0283 12.9397 16.621 12.4144C16.2138 11.889 15.6436 11.5138 15 11.3477" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.75 15.75V14.25C12.75 13.4544 12.4339 12.6913 11.8713 12.1287C11.3087 11.5661 10.5457 11.25 9.75 11.25H3.75C2.95435 11.25 2.19129 11.5661 1.62868 12.1287C1.06607 12.6913 0.75 13.4544 0.75 14.25V15.75" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12 2.34766C12.6453 2.51288 13.2173 2.88818 13.6257 3.41439C14.0342 3.9406 14.2559 4.58778 14.2559 5.25391C14.2559 5.92003 14.0342 6.56722 13.6257 7.09342C13.2173 7.61963 12.6453 7.99493 12 8.16016" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M6.75 8.25C8.40685 8.25 9.75 6.90685 9.75 5.25C9.75 3.59315 8.40685 2.25 6.75 2.25C5.09315 2.25 3.75 3.59315 3.75 5.25C3.75 6.90685 5.09315 8.25 6.75 8.25Z" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 text-secondary" style={{ fontSize: "14px" }}>
                       Tasks by Assignee
@@ -510,12 +516,15 @@ export default function Home() {
             </div>
 
             {/* Overdue Tasks */}
-            <div className="col-lg-3 col-md-6 mb-4">
+            <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 overdue-task rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                     <svg width="17" height="15" viewBox="0 0 17 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M8.45703 4.17773V9.17773M8.45703 11.1777V11.6777V10.6777M14.7632 14.1777H1.70239C0.929648 14.1777 0.448903 13.3387 0.839695 12.672L7.56799 1.19433C7.96018 0.525304 8.93164 0.537959 9.30627 1.21698L15.6388 12.6947C16.0065 13.3611 15.5244 14.1777 14.7632 14.1777Z" stroke="#CA262B" strokeWidth="1.4"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2">Overdue Tasks</h6>
                   </div>
@@ -530,12 +539,15 @@ export default function Home() {
             </div>
 
             {/* No Time Estimate */}
-            <div className="col-lg-3 col-md-6 mb-4">
+            <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 no-time-estimate rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M11.0833 12.25L12.25 11.0833L9.16667 8V4.16667H7.5V8.66667L11.0833 12.25ZM8.33333 16.6667C7.18056 16.6667 6.09722 16.4479 5.08333 16.0104C4.06944 15.5729 3.1875 14.9792 2.4375 14.2292C1.6875 13.4792 1.09375 12.5972 0.65625 11.5833C0.21875 10.5694 0 9.48611 0 8.33333C0 7.18056 0.21875 6.09722 0.65625 5.08333C1.09375 4.06944 1.6875 3.1875 2.4375 2.4375C3.1875 1.6875 4.06944 1.09375 5.08333 0.65625C6.09722 0.21875 7.18056 0 8.33333 0C9.48611 0 10.5694 0.21875 11.5833 0.65625C12.5972 1.09375 13.4792 1.6875 14.2292 2.4375C14.9792 3.1875 15.5729 4.06944 16.0104 5.08333C16.4479 6.09722 16.6667 7.18056 16.6667 8.33333C16.6667 9.48611 16.4479 10.5694 16.0104 11.5833C15.5729 12.5972 14.9792 13.4792 14.2292 14.2292C13.4792 14.9792 12.5972 15.5729 11.5833 16.0104C10.5694 16.4479 9.48611 16.6667 8.33333 16.6667ZM8.33333 15C10.1806 15 11.7535 14.3507 13.0521 13.0521C14.3507 11.7535 15 10.1806 15 8.33333C15 6.48611 14.3507 4.91319 13.0521 3.61458C11.7535 2.31597 10.1806 1.66667 8.33333 1.66667C6.48611 1.66667 4.91319 2.31597 3.61458 3.61458C2.31597 4.91319 1.66667 6.48611 1.66667 8.33333C1.66667 10.1806 2.31597 11.7535 3.61458 13.0521C4.91319 14.3507 6.48611 15 8.33333 15Z" fill="#B27626"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2 " style={{ fontSize: "14px" }}>
                       No Time Estimate
@@ -554,12 +566,15 @@ export default function Home() {
             </div>
 
             {/* Tasks Outstanding */}
-            <div className="col-lg-3 col-md-6 mb-4">
+            <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 task-outstanding rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                      <svg width="17" height="16" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M1.75 15.75C1.26875 15.75 0.856771 15.5786 0.514063 15.2359C0.171354 14.8932 0 14.4812 0 14V1.75C0 1.26875 0.171354 0.856771 0.514063 0.514063C0.856771 0.171354 1.26875 0 1.75 0H14C14.1167 0 14.226 0.0109375 14.3281 0.0328125C14.4302 0.0546875 14.5323 0.0875 14.6344 0.13125L13.0156 1.75H1.75V14H14V8.18125L15.75 6.43125V14C15.75 14.4812 15.5786 14.8932 15.2359 15.2359C14.8932 15.5786 14.4812 15.75 14 15.75H1.75ZM7.45938 12.25L2.51562 7.30625L3.74063 6.08125L7.45938 9.8L15.4875 1.77188L16.7344 2.975L7.45938 12.25Z" fill="#D5623A"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2 " style={{ fontSize: "14px" }}>
                       Tasks Outstanding
@@ -579,14 +594,17 @@ export default function Home() {
           </div>
 
           {/* Second Row */}
-          <div className="row mb-4">
+          <div className="row mb-4 g-4">
             {/* Completed This Week */}
-            <div className="col-lg-4 col-md-6 mb-4">
+            <div className="col-lg-4 col-md-4 col-sm-6">
               <div className="card h-100 completed-this-week rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                      <svg width="17" height="16" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M1.7 13.4737V1.68421V11.2421V9.45263V13.4737ZM1.7 15.1579C1.2325 15.1579 0.832292 14.993 0.499375 14.6632C0.166458 14.3333 0 13.9368 0 13.4737V1.68421C0 1.22105 0.166458 0.824561 0.499375 0.494737C0.832292 0.164912 1.2325 0 1.7 0H13.6C14.0675 0 14.4677 0.164912 14.8006 0.494737C15.1335 0.824561 15.3 1.22105 15.3 1.68421V8.42105H13.6V1.68421H1.7V13.4737H7.65V15.1579H1.7ZM12.1975 16L9.18 13.0105L10.3913 11.8316L12.1975 13.6211L15.81 10.0421L17 11.2421L12.1975 16ZM4.25 8.42105C4.49083 8.42105 4.69271 8.34035 4.85563 8.17895C5.01854 8.01754 5.1 7.81754 5.1 7.57895C5.1 7.34035 5.01854 7.14035 4.85563 6.97895C4.69271 6.81754 4.49083 6.73684 4.25 6.73684C4.00917 6.73684 3.80729 6.81754 3.64438 6.97895C3.48146 7.14035 3.4 7.34035 3.4 7.57895C3.4 7.81754 3.48146 8.01754 3.64438 8.17895C3.80729 8.34035 4.00917 8.42105 4.25 8.42105ZM4.25 5.05263C4.49083 5.05263 4.69271 4.97193 4.85563 4.81053C5.01854 4.64912 5.1 4.44912 5.1 4.21053C5.1 3.97193 5.01854 3.77193 4.85563 3.61053C4.69271 3.44912 4.49083 3.36842 4.25 3.36842C4.00917 3.36842 3.80729 3.44912 3.64438 3.61053C3.48146 3.77193 3.4 3.97193 3.4 4.21053C3.4 4.44912 3.48146 4.64912 3.64438 4.81053C3.80729 4.97193 4.00917 5.05263 4.25 5.05263ZM6.8 8.42105H11.9V6.73684H6.8V8.42105ZM6.8 5.05263H11.9V3.36842H6.8V5.05263Z" fill="#00A63D"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2 " style={{ fontSize: "14px" }}>
                       Completed This Week
@@ -604,12 +622,15 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="col-lg-4 col-md-6 mb-4">
+            <div className="col-lg-4 col-md-4 col-sm-6">
               <div className="card h-100 workspace-point rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                     <svg width="12" height="15" viewBox="0 0 12 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M4.01979 8.2875L4.63958 6.26875L3.01042 4.95833H5.02917L5.66667 2.975L6.30417 4.95833H8.32292L6.67604 6.26875L7.29583 8.2875L5.66667 7.03021L4.01979 8.2875ZM1.41667 14.875V9.40312C0.968055 8.90729 0.619792 8.34062 0.371875 7.70312C0.123958 7.06562 0 6.38681 0 5.66667C0 4.08472 0.548958 2.74479 1.64688 1.64688C2.74479 0.548958 4.08472 0 5.66667 0C7.24861 0 8.58854 0.548958 9.68646 1.64688C10.7844 2.74479 11.3333 4.08472 11.3333 5.66667C11.3333 6.38681 11.2094 7.06562 10.9615 7.70312C10.7135 8.34062 10.3653 8.90729 9.91667 9.40312V14.875L5.66667 13.4583L1.41667 14.875ZM5.66667 9.91667C6.84722 9.91667 7.85069 9.50347 8.67708 8.67708C9.50347 7.85069 9.91667 6.84722 9.91667 5.66667C9.91667 4.48611 9.50347 3.48264 8.67708 2.65625C7.85069 1.82986 6.84722 1.41667 5.66667 1.41667C4.48611 1.41667 3.48264 1.82986 2.65625 2.65625C1.82986 3.48264 1.41667 4.48611 1.41667 5.66667C1.41667 6.84722 1.82986 7.85069 2.65625 8.67708C3.48264 9.50347 4.48611 9.91667 5.66667 9.91667ZM2.83333 12.7677L5.66667 12.0417L8.5 12.7677V10.5719C8.08681 10.808 7.64115 10.9939 7.16302 11.1297C6.6849 11.2655 6.18611 11.3333 5.66667 11.3333C5.14722 11.3333 4.64844 11.2655 4.17031 11.1297C3.69219 10.9939 3.24653 10.808 2.83333 10.5719V12.7677Z" fill="#8B14DC"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2 " style={{ fontSize: "14px" }}>
                       Workspace Points
@@ -627,12 +648,15 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="col-lg-4 col-md-6 mb-4">
+            <div className="col-lg-4 col-md-4 col-sm-6">
               <div className="card h-100 thr rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
-                      {/* svg */}
+                     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M6.25 12.5C5.38542 12.5 4.57292 12.3359 3.8125 12.0078C3.05208 11.6797 2.39062 11.2344 1.82812 10.6719C1.26562 10.1094 0.820313 9.44792 0.492188 8.6875C0.164062 7.92708 0 7.11458 0 6.25C0 5.38542 0.164062 4.57292 0.492188 3.8125C0.820313 3.05208 1.26562 2.39062 1.82812 1.82812C2.39062 1.26562 3.05208 0.820313 3.8125 0.492188C4.57292 0.164062 5.38542 0 6.25 0C7.11458 0 7.92708 0.164062 8.6875 0.492188C9.44792 0.820313 10.1094 1.26562 10.6719 1.82812C11.2344 2.39062 11.6797 3.05208 12.0078 3.8125C12.3359 4.57292 12.5 5.38542 12.5 6.25C12.5 6.53125 12.4844 6.80729 12.4531 7.07812C12.4219 7.34896 12.3698 7.61458 12.2969 7.875C12.151 7.70833 11.9818 7.56771 11.7891 7.45312C11.5964 7.33854 11.3854 7.26042 11.1562 7.21875C11.1875 7.0625 11.2109 6.90365 11.2266 6.74219C11.2422 6.58073 11.25 6.41667 11.25 6.25C11.25 4.85417 10.7656 3.67188 9.79688 2.70313C8.82812 1.73438 7.64583 1.25 6.25 1.25C4.85417 1.25 3.67188 1.73438 2.70313 2.70313C1.73438 3.67188 1.25 4.85417 1.25 6.25C1.25 7.64583 1.73438 8.82812 2.70313 9.79688C3.67188 10.7656 4.85417 11.25 6.25 11.25C6.78125 11.25 7.28906 11.1719 7.77344 11.0156C8.25781 10.8594 8.70312 10.6406 9.10938 10.3594C9.23438 10.5365 9.38802 10.6927 9.57031 10.8281C9.7526 10.9635 9.94792 11.0677 10.1562 11.1406C9.625 11.5677 9.02865 11.901 8.36719 12.1406C7.70573 12.3802 7 12.5 6.25 12.5ZM10.7812 10C10.5625 10 10.3776 9.92448 10.2266 9.77344C10.0755 9.6224 10 9.4375 10 9.21875C10 9 10.0755 8.8151 10.2266 8.66406C10.3776 8.51302 10.5625 8.4375 10.7812 8.4375C11 8.4375 11.1849 8.51302 11.3359 8.66406C11.487 8.8151 11.5625 9 11.5625 9.21875C11.5625 9.4375 11.487 9.6224 11.3359 9.77344C11.1849 9.92448 11 10 10.7812 10ZM8.3125 9.1875L5.625 6.5V3.125H6.875V6L9.1875 8.3125L8.3125 9.1875Z" fill="#3763E8"/>
+</svg>
+
                     </div>
                     <h6 className="card-title mb-0 ms-2 " style={{ fontSize: "14px" }}>
                       Total Hours
@@ -652,9 +676,9 @@ export default function Home() {
           </div>
 
           {/* Third Row - Charts */}
-          <div className="row">
+          <div className="row g-4 mb-4">
             {/* Time Reporting Chart */}
-            <div className="col-lg-6 mb-4">
+            <div className="col-lg-6">
               <div className="card g-border h-100 rounded-13" style={{ borderRadius: "8px" }}>
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-4">
@@ -677,7 +701,7 @@ export default function Home() {
             </div>
 
             {/* Workload by Status Chart */}
-            <div className="col-lg-6 mb-4">
+            <div className="col-lg-6">
               <div className="card g-border h-100 rounded-13" style={{ borderRadius: "8px" }}>
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-4">
@@ -705,8 +729,9 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="row">
-            <div className="card g-borde rounded-13">
+          <div className="row mb-4">
+            <div className="col-12">
+              <div className="card g-borde rounded-13">
               <div className="card-body">
                 <h5 className="card-title mb-4">Status over time</h5>
                 <ResponsiveContainer width="100%" height={400}>
@@ -723,6 +748,8 @@ export default function Home() {
                 </ResponsiveContainer>
               </div>
             </div>
+            </div>
+            
           </div>
         </div>
       </main>

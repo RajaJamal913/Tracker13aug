@@ -5,15 +5,25 @@ from rest_framework.response import Response
 from .models import TimeRequest, Notification
 from .serializers import TimeRequestSerializer, NotificationSerializer
 from rest_framework.authentication import TokenAuthentication
+# timesheet/views.py
+from django.db.models import Q
+from rest_framework import viewsets, permissions, filters, status
+from rest_framework.response import Response
+from .models import TimeRequest, Notification
+from .serializers import TimeRequestSerializer, NotificationSerializer
+from rest_framework.authentication import TokenAuthentication
+
+
 class TimeRequestViewSet(viewsets.ModelViewSet):
     """
     - Regular users may CREATE & LIST only their own requests.
-    - Project owners (staff or owner) may PATCH status to APPROVED/REJECTED.
+    - Request creators may edit/delete their own requests (but not change status).
+    - Project owners (or staff) may PATCH status to APPROVED/REJECTED.
     """
     queryset = TimeRequest.objects.all()
     serializer_class = TimeRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [TokenAuthentication] 
+    authentication_classes = [TokenAuthentication]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["status", "project__name", "task__title"]
     ordering_fields = ["created_at", "date"]
@@ -23,11 +33,16 @@ class TimeRequestViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         if user.is_staff:
             return qs
-        # use Q directly
         return qs.filter(
             Q(user=user) |
             Q(project__created_by=user)
         )
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        # ensure request is available to serializer (DRF does this by default, but just in case)
+        ctx["request"] = self.request
+        return ctx
 
     def create(self, request, *args, **kwargs):
         # on create, serializer.create will attach .user
@@ -35,15 +50,30 @@ class TimeRequestViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         """
-        Only allow patching `status` to APPROVED/REJECTED by the project owner.
-        When status changes, mark related Notification as read.
+        Permission rules for PATCH:
+         - If changing `status`: only project owner (project.created_by) or staff can do it.
+         - If changing other fields: only the request creator (obj.user) or staff may do it.
+        When status really changes, mark related Notification read.
         """
         instance = self.get_object()
         user = request.user
 
-        # only the project owner (or staff) may change status
-        if instance.project.created_by != user and not user.is_staff:
-            return Response({"detail":"Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        incoming_status = None
+        if isinstance(request.data, dict):
+            incoming_status = request.data.get("status", None)
+        else:
+            # request.data may be QueryDict or other; access via get
+            incoming_status = request.data.get("status", None)
+
+        # Changing status -> only project owner or staff
+        if incoming_status is not None:
+            project_owner = getattr(getattr(instance, "project", None), "created_by", None)
+            if not (user.is_staff or (project_owner is not None and getattr(project_owner, "id", None) == getattr(user, "id", None))):
+                return Response({"detail": "Not allowed to change status"}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            # Editing other fields -> only creator or staff
+            if not (user.is_staff or getattr(getattr(instance, "user", None), "id", None) == getattr(user, "id", None)):
+                return Response({"detail": "Not allowed to edit this request"}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -51,11 +81,24 @@ class TimeRequestViewSet(viewsets.ModelViewSet):
         new_status = serializer.validated_data.get("status", old_status)
         self.perform_update(serializer)
 
-        # if status really changed, mark the original notification read
+        # if status changed, mark related notifications read
         if new_status != old_status:
             Notification.objects.filter(time_request=instance).update(is_read=True)
 
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Only the creator (obj.user) or staff may delete a TimeRequest.
+        Project owner (recipient) is not allowed to delete someone else's request.
+        """
+        instance = self.get_object()
+        user = request.user
+
+        if not (user.is_staff or getattr(getattr(instance, "user", None), "id", None) == getattr(user, "id", None)):
+            return Response({"detail": "Not allowed to delete this request"}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().destroy(request, *args, **kwargs)
 
 # views.py
 from rest_framework import viewsets, permissions

@@ -11,8 +11,10 @@ import StartTracker from '@/components/StartTracker';
 import { Menu } from "primereact/menu";
 import { Avatar } from "primereact/avatar";
 import { Ripple } from "primereact/ripple";
-
-export default function Header() {
+interface HeaderProps {
+  onToggleSidebar?: () => void;
+}
+export default function Header({ onToggleSidebar }: HeaderProps) {
   const [username, setUsername] = useState<string>("Loading...");
   const router = useRouter();
   const menu = useRef<Menu>(null);
@@ -32,22 +34,22 @@ export default function Header() {
   };
 
   const items = [
-    {
-      label: "Profile",
-      icon: "pi pi-user",
-      command: () => router.push("/profile"),
-    },
+    // {
+    //   label: "Profile",
+    //   icon: "pi pi-user",
+    //   command: () => router.push("/profile"),
+    // },
     {
       label: "Settings",
       icon: "pi pi-cog",
-      command: () => router.push("/settings"),
+      command: () => router.push("/dashboard/user-management/"),
     },
-    {
-      label: "Notifications",
-      icon: "pi pi-bell",
-      command: () => router.push("<NotificationDropdown/>"),
-    },
-    { separator: true },
+    // {
+    //   label: "Notifications",
+    //   icon: "pi pi-bell",
+    //   command: () => router.push("<NotificationDropdown/>"),
+    // },
+    // { separator: true },
     {
       label: "Logout",
       icon: "pi pi-sign-out",
@@ -172,17 +174,44 @@ export default function Header() {
       style={{ backgroundColor: "#f8f9fa", padding: "0" }}
     >
       <div
-        className="container-fluid d-flex flex-column" >
-        <div className="header-top d-flex justify-content-between align-items-center gap-2 py-2 px-3 w-100 border-bottom">
+        className="container-fluid d-flex flex-column px-0" >
+        <div className="header-top d-flex justify-content-between align-items-center gap-2 py-2 w-100 border-bottom px-3">
           {/* Left Section: Menu Toggle & Dashboard Link */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
             {/* Menu Toggle Button */}
+  {/* Add HB element for toggling sidebar */}
+
+ {/* Add hamburger menu button if onToggleSidebar is provided */}
+      {onToggleSidebar && (
+        <div 
+          className="HB" 
+          onClick={onToggleSidebar}
+          style={{
+            cursor: 'pointer',
+            padding: '3px',
+            marginRight: '15px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: "1px solid #e0e0e0",
+            background: 'transparent',
+            borderRadius: '4px'
+          }}
+        >
+          <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512" height="200px" width="200px" xmlns="http://www.w3.org/2000/svg"><path d="M32 96v64h448V96H32zm0 128v64h448v-64H32zm0 128v64h448v-64H32z"></path></svg>
+        </div>
+      )}
+
+
+    
+
+
             <button
               className="btn btn-ghost p-0"
               style={{
                 border: "1px solid #e0e0e0",
-                width: "32px",
-                height: "32px",
+                width: "27px",
+                height: "27px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -215,10 +244,10 @@ export default function Header() {
           </div>
 
           {/* Center Section: Search Bar */}
-          <div style={{ flex: "1", maxWidth: "400px", margin: "0 16px", minWidth: "150px" }}>
+          <div style={{ flex: "1", maxWidth: "400px", width: "100%" }}>
             <div
               className="input-group"
-              style={{ backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "20px", padding: "4px 12px" }}
+              style={{ backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "20px", padding: "2px 12px", height: "30px" }}
             >
               <span className="input-group-text p-0" style={{ border: "none", backgroundColor: "transparent" }}>
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -228,7 +257,7 @@ export default function Header() {
               </span>
               <input
                 type="text"
-                className="form-control"
+                className="form-control py-0"
                 placeholder="Search"
                 style={{ border: "none", outline: "none", fontSize: "13px" }}
               />
@@ -236,7 +265,7 @@ export default function Header() {
                 className="btn p-0"
                 style={{ backgroundColor: "transparent", border: "none", color: "#e91e63", flexShrink: 0 }}
               >
-                <i className="bi bi-heart" style={{ fontSize: "14px" }}></i>
+                <i className="bi bi-heart" style={{ fontSize: "13px" }}></i>
               </button>
             </div>
           </div>
@@ -269,7 +298,7 @@ export default function Header() {
               {/* Icon Buttons */}
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 {/* Grid Icon */}
-                <button className="btn btn-ghost btn-sm p-0">
+                <Link href="#" className="btn btn-ghost btn-sm p-0">
                   <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M1 1H1.00642" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M3.99658 1H4.00301" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
@@ -281,35 +310,25 @@ export default function Header() {
                     <path d="M3.99658 6.99414H4.00301" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M6.99316 6.99414H6.99959" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                   </svg>
-                </button>
+                </Link>
 
                 {/* Envelope Icon */}
-                <button
-                  className="btn btn-ghost btn-sm p-0"
-
-                >
+                <Link href="/dashboard/reporting"className="btn btn-ghost btn-sm p-0">
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M7.25 2.75V7.25M5 4.4375V7.25M2.75 6.125V7.25M1.625 9.5H8.375C8.99632 9.5 9.5 8.99632 9.5 8.375V1.625C9.5 1.00368 8.99632 0.5 8.375 0.5H1.625C1.00368 0.5 0.5 1.00368 0.5 1.625V8.375C0.5 8.99632 1.00368 9.5 1.625 9.5Z" stroke="#7B224D" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
 
-                </button>
+                </Link>
 
                 {/* Image Icon */}
-                <button
-                  className="btn btn-ghost btn-sm p-0">
+                <Link href="#" className="btn btn-ghost btn-sm p-0">
                   <svg width="10" height="8" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M0.5 2L4.4453 4.6302C4.7812 4.85413 5.2188 4.85413 5.5547 4.6302L9.5 2M1.5 7.5H8.5C9.05228 7.5 9.5 7.05228 9.5 6.5V1.5C9.5 0.947715 9.05228 0.5 8.5 0.5H1.5C0.947715 0.5 0.5 0.947715 0.5 1.5V6.5C0.5 7.05228 0.947715 7.5 1.5 7.5Z" stroke="#DA53FF" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
-                </button>
+                </Link>
 
-                {/* Smiley Icon */}
-                <button
-                  className="btn btn-ghost btn-sm p-0">
-                  <svg width="10" height="11" viewBox="0 0 10 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6.6875 8.27778H9.5L8.70973 7.49726C8.4954 7.28559 8.375 6.99849 8.375 6.69914V4.94445C8.375 3.49309 7.43584 2.25838 6.125 1.80079V1.61111C6.125 0.997461 5.62132 0.5 5 0.5C4.37868 0.5 3.875 0.997461 3.875 1.61111V1.80079C2.56416 2.25838 1.625 3.49309 1.625 4.94445V6.69914C1.625 6.99849 1.5046 7.28559 1.29027 7.49726L0.5 8.27778H3.3125M6.6875 8.27778V8.83333C6.6875 9.75381 5.93198 10.5 5 10.5C4.06802 10.5 3.3125 9.75381 3.3125 8.83333V8.27778M6.6875 8.27778H3.3125" stroke="#FFB300" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-
-                </button>
+                {/* Bell Icon */}
+              
                 <button
                   className="btn btn-ghost btn-sm p-0">
                   <NotificationDropdown />
@@ -319,14 +338,13 @@ export default function Header() {
 
 
                 {/* Plus Icon */}
-                <button
-                  className="btn btn-ghost btn-sm p-0">
+                <Link href="#" className="btn btn-ghost btn-sm p-0">
                   <svg width="11" height="10" viewBox="0 0 11 10" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M0.665039 4.66406H9.66504H0.665039ZM5.16504 0.664062V8.66406V0.664062Z" fill="#D9D9D9" />
                     <path d="M0.665039 4.66406H9.66504M5.16504 0.664062V8.66406" stroke="#474747" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
 
-                </button>
+                </Link>
               </div>
 
               {/* User Profile Dropdown */}
@@ -358,11 +376,12 @@ export default function Header() {
             </div>
           </div>
         </div>
-        <div className="header-bottom d-flex justify-content-between align-items-center gap-2 py-2 px-3 w-100">
+        <div className="header-bottom-parent">
+          <div className="header-bottom d-flex justify-content-between align-items-center gap-2 py-2 w-100 px-3">
           <div className="left-wrap d-flex align-items-center gap-2">
             <svg width="22" height="20" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect width="22" height="20" rx="5" fill="#355DC9" />
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M6.04226 8.11688C6.04226 6.39548 7.44389 5 9.17288 5C10.9019 5 12.3035 6.39548 12.3035 8.11688C12.3035 9.19 11.7588 10.1361 10.9303 10.6966C12.1579 11.2446 13.0716 12.3498 13.327 13.6846C13.3816 13.9701 13.3272 14.2469 13.1695 14.4651C13.0116 14.6835 12.7649 14.8226 12.4744 14.8597C11.9055 14.9322 10.911 15 9.17382 15C7.43664 15 6.44216 14.9322 5.87324 14.8597C5.58267 14.8226 5.33603 14.6835 5.17815 14.4651C5.02043 14.2469 4.96599 13.9701 5.0206 13.6846C5.27595 12.3502 6.18913 11.2452 7.41616 10.6971C6.58725 10.1366 6.04226 9.19031 6.04226 8.11688ZM13.8047 14.9203C13.7867 14.9451 13.7682 14.9693 13.7491 14.9929C14.9305 14.9737 15.6674 14.9183 16.1268 14.8597C16.4173 14.8226 16.664 14.6835 16.8219 14.4651C16.9796 14.2469 17.034 13.9701 16.9794 13.6846C16.724 12.3498 15.8103 11.2446 14.5827 10.6966C15.4112 10.1361 15.9559 9.19 15.9559 8.11688C15.9559 6.39548 14.5543 5 12.8253 5C12.4486 5 12.0875 5.06622 11.7531 5.18759C12.5703 5.90167 13.0861 6.9493 13.0861 8.11688C13.0861 9.04161 12.7622 9.89065 12.2227 10.5581C13.1771 11.2756 13.8635 12.3247 14.0958 13.5388C14.1861 14.0107 14.1013 14.5099 13.8047 14.9203Z" fill="white" />
+              <path fillRule="evenodd" clip-rule="evenodd" d="M6.04226 8.11688C6.04226 6.39548 7.44389 5 9.17288 5C10.9019 5 12.3035 6.39548 12.3035 8.11688C12.3035 9.19 11.7588 10.1361 10.9303 10.6966C12.1579 11.2446 13.0716 12.3498 13.327 13.6846C13.3816 13.9701 13.3272 14.2469 13.1695 14.4651C13.0116 14.6835 12.7649 14.8226 12.4744 14.8597C11.9055 14.9322 10.911 15 9.17382 15C7.43664 15 6.44216 14.9322 5.87324 14.8597C5.58267 14.8226 5.33603 14.6835 5.17815 14.4651C5.02043 14.2469 4.96599 13.9701 5.0206 13.6846C5.27595 12.3502 6.18913 11.2452 7.41616 10.6971C6.58725 10.1366 6.04226 9.19031 6.04226 8.11688ZM13.8047 14.9203C13.7867 14.9451 13.7682 14.9693 13.7491 14.9929C14.9305 14.9737 15.6674 14.9183 16.1268 14.8597C16.4173 14.8226 16.664 14.6835 16.8219 14.4651C16.9796 14.2469 17.034 13.9701 16.9794 13.6846C16.724 12.3498 15.8103 11.2446 14.5827 10.6966C15.4112 10.1361 15.9559 9.19 15.9559 8.11688C15.9559 6.39548 14.5543 5 12.8253 5C12.4486 5 12.0875 5.06622 11.7531 5.18759C12.5703 5.90167 13.0861 6.9493 13.0861 8.11688C13.0861 9.04161 12.7622 9.89065 12.2227 10.5581C13.1771 11.2756 13.8635 12.3247 14.0958 13.5388C14.1861 14.0107 14.1013 14.5099 13.8047 14.9203Z" fill="white" />
             </svg>
 
             <span>Dashboard</span>
@@ -414,9 +433,11 @@ export default function Header() {
             </a>
           </div>
         </div>
+        </div>
+        
 
         <button
-          className="btn p-0 d-lg-none "
+          className="btn p-0 d-lg-none  mb-3 mt-3"
           style={{
             backgroundColor: "transparent",
             border: "1px solid #e0e0e0",
@@ -427,16 +448,17 @@ export default function Header() {
             justifyContent: "center",
             cursor: "pointer",
             marginLeft: "auto",
+            marginRight: "15px",
           }}
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
-          <i className="bi bi-three-dots-vertical" style={{ fontSize: "18px" }}></i>
+         <svg style={{width:"20px", height:"20px", }} stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512" height="200px" width="200px" xmlns="http://www.w3.org/2000/svg"><path style={{fill:"grey"}} d="M32 96v64h448V96H32zm0 128v64h448v-64H32zm0 128v64h448v-64H32z"></path></svg>
         </button>
       </div>
 
       {isMenuOpen && (
         <div
-          className="d-lg-none w-100"
+          className="d-lg-none w-100 tr-mobile-menu shadow"
           style={{
             backgroundColor: "#fff",
             borderTop: "1px solid #e0e0e0",
@@ -446,6 +468,7 @@ export default function Header() {
           }}
         >
           {/* Dashboard Link */}
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-1">
           <Link
             href="#"
             className="text-decoration-none d-flex align-items-center"
@@ -462,6 +485,26 @@ export default function Header() {
 
             Dashboard
           </Link>
+
+
+          <div className="nav-profile-wrapper" style={{width:"fit-content"}}>
+                <Menu model={items} popup ref={menu} />
+                <div
+                  onClick={(event) => menu.current?.toggle(event)}
+                  className="flex align-items-center gap-2 cursor-pointer nav-profile"
+                >
+                  <Avatar
+                    image="/assets/images/profile-img.jpg"
+                    size="large"
+                    shape="circle"
+                  />
+                  <span className="font-medium text-900">{username}</span>
+                  <i className="pi pi-angle-down text-600 text-sm"></i>
+                  <Ripple />
+                </div>
+              </div>
+
+          </div>
 
           {/* Upgrade Button */}
           <button
@@ -515,7 +558,7 @@ export default function Header() {
               }}
             >
               <i className="bi bi-grid-3x2 me-2"></i>
-              Grid
+             Options
             </button>
 
             <button
@@ -528,7 +571,7 @@ export default function Header() {
               }}
             >
               <i className="bi bi-envelope me-2"></i>
-              Messages
+             Mail
             </button>
 
             <button
@@ -541,7 +584,7 @@ export default function Header() {
               }}
             >
               <i className="bi bi-image me-2"></i>
-              Gallery
+             Notifications
             </button>
 
             <button
@@ -554,9 +597,9 @@ export default function Header() {
               }}
             >
               <i className="bi bi-emoji-smile me-2"></i>
-              Feedback
+              Add Task
             </button>
-
+{/* 
             <button
               className="btn btn-sm w-100"
               style={{
@@ -568,14 +611,14 @@ export default function Header() {
             >
               <i className="bi bi-plus me-2"></i>
               More
-            </button>
+            </button> */}
           </div>
 
           {/* Divider */}
           <div style={{ borderBottom: "1px solid #f0f0f0", margin: "10px 0" }}></div>
 
           {/* User Profile Section */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0" }}>
+          {/* <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0" }}>
             <img
               src="https://api.dicebear.com/7.x/avataaars/svg?seed=user"
               alt="User Avatar"
@@ -594,9 +637,10 @@ export default function Header() {
                 Settings
               </a>
             </div>
-          </div>
+          </div> */}
+          
 
-          <button
+          {/* <button
             style={{
               backgroundColor: "transparent",
               color: "#d32f2f",
@@ -611,7 +655,7 @@ export default function Header() {
           >
             <i className="bi bi-box-arrow-right me-1"></i>
             Logout
-          </button>
+          </button> */}
         </div>
       )}
     </nav>

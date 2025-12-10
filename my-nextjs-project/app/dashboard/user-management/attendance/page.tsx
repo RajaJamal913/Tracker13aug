@@ -19,12 +19,12 @@ export default function AttendanceSettings() {
       remindMembers,
       reminderTime
     });
-  };
+  };  
 
   return (
-    <div className="container-fluid py-5 px-0">
-      <div className="card shadow rounded-3">
-        <div className="card-header g-theme-bg text-white">
+    <div className="container-fluid pb-5">
+      <div className="card  rounded-3">
+        <div className="card-header g-theme-bg">
           <h5 className="mb-0">Attendance</h5>
         </div>
         <div className="card-body">

@@ -64,18 +64,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <>
-      <div className="um-main-wrapper py-5">
+      <div className="um-main-wrapper pb-5">
 
-        <div className="d-flex justify-content-end pe-3 um-canvas-toggle-wrapper">
+        <div className="d-flex justify-content-end pe-3 um-canvas-toggle-wrapper mb-3">
           <a className="um-canvas-toggle" data-bs-toggle="offcanvas" href="#offcanvasExample" role="button" aria-controls="offcanvasExample">
-            <div className="bars-um"></div>
-            <div className="bars-um"></div>
-            <div className="bars-um"></div>
+           <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512" height="200px" width="200px" xmlns="http://www.w3.org/2000/svg" style={{ width: "20px;",
+    height: "25px;",
+    fill: "grey;"}}><path d="M32 96v64h448V96H32zm0 128v64h448v-64H32zm0 128v64h448v-64H32z"></path></svg>
           </a>
         </div>
         <div className="dashboard-container">
           <aside className="sidebar user-mgt-dashboard g-scroll">
-            <div className="mb-3">
+            <div className="mb-3 border-bottom pb-1">
               <h3 className="logo text-dark text-xl font-semibold mb-1">
                 {username}
               </h3>
@@ -98,14 +98,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </nav>
           </aside>
 
-          <div className="offcanvas offcanvas-start um-off-canvas" tabIndex={-1} id="offcanvasExample" aria-labelledby="offcanvasExampleLabel">
+          <div className="offcanvas offcanvas-start um-off-canvas" data-bs-backdrop="static" tabIndex={-1} id="offcanvasExample" aria-labelledby="offcanvasExampleLabel">
             <div className="offcanvas-header">
               <h5 className="offcanvas-title d-none" id="offcanvasExampleLabel">Offcanvas</h5>
               <button type="button" className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
             <div className="offcanvas-body g-scroll">
               <aside className="off-canvas-aside ">
-                <div className="mb-3">
+                <div className="mb-3 border-bottom pb-1">
                   <h3 className="logo text-dark text-xl font-semibold mb-1">
                     {username}
                   </h3>
@@ -164,7 +164,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     color: white !important;
     font-weight: 500;
 }
-    
+    .content-main {
+    height: calc(100vh - 110px) !important;
+    overflow: hidden auto;
+}
       `}</style>
         </div>
       </div>

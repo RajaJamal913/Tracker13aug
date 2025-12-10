@@ -176,8 +176,8 @@ const data = [
       <div className="mt-3">
         {activeTab === "members" && <div className="p-3 border rounded">
           {/* Table */}
-                     <div className="table-responsive g-table-wrap g-t-scroll">
-                       <Table hover className="text-center g-table">
+                     <div className="table-responsive min-w-10">
+                       <table className="text-center g-table">
                          <thead>
                            <tr className="text-white" style={{ backgroundColor: "#A54EF5" }}>
                            <th>Members</th>
@@ -198,7 +198,7 @@ const data = [
             </tr>
           ))}
                    </tbody>
-                       </Table>
+                       </table>
                      </div>
           </div>}
         {activeTab === "onboarding" && <div className="p-3 border rounded">

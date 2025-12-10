@@ -333,15 +333,15 @@ export default function ProfileTabs() {
   };
 
   return (
-    <div className="container mt-5">
+    <div className="container">
       {/* Tab Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <div className="d-flex">
+      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 tabContainer profile-settings-tabs-wrapper">
+        <div className="d-flex um-btns-wrap">
           {(["pending", "approved", "rejected"] as const).map((tab) => (
             <button
               key={tab}
-              className={`btn me-2 ${
-                activeTab === tab ? "g-btn" : "btn-outline-secondary"
+              className={`px-4 tabButton py-2 ${
+                activeTab === tab ? "active" : "text-gray-500"
               }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -351,7 +351,7 @@ export default function ProfileTabs() {
         </div>
         <div>
           <Button
-            variant="outline-secondary"
+            variant="btn g-btn"
             className="me-2"
             onClick={() => setShowAddModal(true)}
           >
@@ -361,8 +361,8 @@ export default function ProfileTabs() {
       </div>
 
       {/* Table */}
-      <div className="table-responsive g-table-wrap g-t-scroll">
-        <table className="text-center g-table table table-hover w-full">
+      <div className="table-responsive">
+        <table className="text-center g-table table min-w-12">
           <thead>
             <tr>
               <th>Member</th>

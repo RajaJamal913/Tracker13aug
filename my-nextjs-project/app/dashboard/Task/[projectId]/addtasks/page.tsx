@@ -181,7 +181,7 @@ export default function AddTasksPage() {
     }
   };
   return (
-    <div className="p-6  mt-4">
+    <div className=" mt-4">
       {/* Add Task Modal */}
       <div className="modal fade" id="addTaskModal" tabIndex={-1}>
         <div className="modal-dialog">
@@ -231,7 +231,7 @@ export default function AddTasksPage() {
             </select>
             <div className="d-flex justify-content-end gap-2">
               <button className="g-btn h-36 rounded-3" data-bs-dismiss="modal">
-                Cancel
+                Close
               </button>
               <button className="g-btn h-36 rounded-3" onClick={handleAdd}>
                 Save
@@ -413,6 +413,16 @@ export default function AddTasksPage() {
           </tbody>
         </table>
       )}
+
+      <style>
+{
+  `     .modal-backdrop.fade.show{
+    display: none !important;
+}
+  `
+}
+   
+      </style>
     </div>
 );
 }

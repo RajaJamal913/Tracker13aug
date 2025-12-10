@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 import "bootstrap/dist/css/bootstrap.min.css";
-import React, { useState, useEffect, FormEvent } from "react";
+import React, { useState, useEffect, FormEvent, useMemo } from "react";
 import {
   Nav,
   Table,
@@ -17,17 +17,25 @@ import "primereact/resources/themes/lara-light-indigo/theme.css";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 
+type MaybeObj<T> = T | number;
+interface UserObj { id: number; username?: string; is_staff?: boolean }
 interface TimeRequest {
   id: number;
-  user: number;
-  project: number | { id: number; name: string };
-  task: number | { id: number; title: string };
+  user: MaybeObj<UserObj> | string; // StringRelatedField might return string
+  user_id?: number;
+  project: MaybeObj<{ id: number; name: string; created_by?: MaybeObj<UserObj> }>;
+  project_owner?: number | null;
+  task: MaybeObj<{ id: number; title: string }>;
   date: string;
   time_from: string;
   time_to: string;
   requested_duration: string;
   description: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
+  // NEW optional server flags
+  is_creator?: boolean;
+  can_approve?: boolean;
+  can_delete?: boolean;
 }
 
 interface Project {
@@ -40,9 +48,14 @@ interface Task {
   title: string;
 }
 
+interface CurrentUser {
+  id: number;
+  username?: string;
+  is_staff?: boolean;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
 
-// Safely read a cookie only in the browser
 function getCookie(name: string) {
   if (typeof document === "undefined") return "";
   const match = document.cookie.match(new RegExp(`(^|;)\\s*${name}=\\s*([^;]+)`));
@@ -80,7 +93,6 @@ export default function TimeRequestTabs() {
     REJECTED: [],
   });
   const [projects, setProjects] = useState<Project[]>([]);
-  // taskMap caches task details by id when API returned only numeric ids
   const [taskMap, setTaskMap] = useState<Record<number, Task>>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,42 +108,71 @@ export default function TimeRequestTabs() {
     status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED",
   });
 
-  // helper to resolve project name whether API returned id or object
-  const getProjectName = (r: TimeRequest) => {
-    if (!r.project && r.project !== 0) return "—";
-    if (typeof r.project === "object") return r.project.name ?? "—";
-    // number: try to find in loaded projects
-    const p = projects.find((pp) => pp.id === r.project);
-    return p ? p.name : String(r.project);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
+
+  // helpers to extract ids from possibly-nested fields
+  const getUserId = (u: MaybeObj<UserObj> | string | undefined, fallbackUserId?: number | undefined) => {
+    if (typeof fallbackUserId === "number") return fallbackUserId;
+    if (typeof u === "number") return u;
+    if (typeof u === "object") return (u as UserObj).id ?? null;
+    return null;
   };
 
-  // helper to resolve task title whether API returned id or object
-  const getTaskTitle = (r: TimeRequest) => {
-    if (!r.task && r.task !== 0) return "—";
-    if (typeof r.task === "object") return r.task.title ?? "—";
-    const t = taskMap[r.task as number];
-    return t ? t.title : String(r.task);
+  const getProjectOwnerIdFromProject = (p: any) => {
+    if (!p) return null;
+    if (typeof p === "object") {
+      const cb = (p as any).created_by;
+      if (!cb) return null;
+      return typeof cb === "number" ? cb : cb?.id ?? null;
+    }
+    return null;
   };
 
-  // After loading requests, fetch missing task details (when API returns task as id)
+  // load current user: try a few common endpoints; adjust if your API exposes a different one
+  const loadCurrentUser = async () => {
+    const endpoints = [
+      `${API_BASE.replace(/\/api\/?$/, "")}/api/users/me/`,
+      `${API_BASE}/users/me/`,
+      `${API_BASE.replace(/\/api\/?$/, "")}/auth/user/`,
+      `${API_BASE}/auth/user/`,
+      `${API_BASE}/whoami/`,
+    ];
+    const opts = getAuthOptions();
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, { method: "GET", ...opts });
+        if (!res.ok) continue;
+        const j = await res.json();
+        const id = j.id ?? j.user_id ?? j.pk;
+        const is_staff = j.is_staff ?? j.staff ?? j.isAdmin ?? j.is_superuser;
+        if (id) {
+          setCurrentUser({ id, username: j.username, is_staff: !!is_staff });
+          return;
+        }
+      } catch (e) {
+        // ignore and try next
+      }
+    }
+    // fallback: leave currentUser null
+  };
+
+  // populate taskMap when API returns only ids
   const populateTaskMap = async (list: TimeRequest[]) => {
-    // collect numeric task ids
     const numericTaskIds = Array.from(
       new Set(
         list
           .map((r) => (typeof r.task === "number" ? (r.task as number) : null))
           .filter((id): id is number => id !== null)
       )
-    ).filter((id) => !(id in taskMap)); // skip already cached
+    ).filter((id) => !(id in taskMap));
     if (numericTaskIds.length === 0) return;
 
     try {
       const opts = getAuthOptions();
       const fetches = numericTaskIds.map((id) =>
         fetch(`${API_BASE}/tasks/${id}/`, { ...opts }).then(async (res) => {
-          if (!res.ok) {
-            throw new Error(`task fetch ${id} failed ${res.status}`);
-          }
+          if (!res.ok) throw new Error(`task fetch ${id} failed ${res.status}`);
           return res.json();
         })
       );
@@ -148,28 +189,20 @@ export default function TimeRequestTabs() {
     }
   };
 
-  // Load all time-requests
   const loadRequests = async () => {
     setLoading(true);
     try {
       const opts = getAuthOptions();
-      console.log("loadRequests opts:", opts);
       const res = await fetch(`${API_BASE}/time-requests/`, {
         method: "GET",
         ...opts,
       });
-      console.log("loadRequests status:", res.status);
-      if (res.status === 401) {
-        console.warn("Unauthorized (401) when loading time requests. Check token or auth config.");
-      }
       if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
       const json = await res.json();
       const list: TimeRequest[] = Array.isArray(json) ? json : json.results ?? [];
       const grouped = { PENDING: [], APPROVED: [], REJECTED: [] } as Record<string, any>;
       list.forEach((r) => grouped[r.status].push(r));
       setRequests(grouped);
-
-      // fetch any missing task details (if API returned task ids rather than nested objects)
       await populateTaskMap(list);
     } catch (e) {
       console.error("loadRequests failed:", e);
@@ -179,15 +212,12 @@ export default function TimeRequestTabs() {
     }
   };
 
-  // Load projects
   const loadProjects = async () => {
     try {
       const opts = getAuthOptions();
-      console.log("loadProjects opts:", opts);
       const res = await fetch(`${API_BASE}/projects/`, {
         ...opts,
       });
-      console.log("loadProjects status:", res.status);
       if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
       setProjects(await res.json());
     } catch (e) {
@@ -196,7 +226,13 @@ export default function TimeRequestTabs() {
     }
   };
 
-  // Load tasks whenever project changes (for the form's task dropdown)
+  useEffect(() => {
+    loadCurrentUser();
+    loadRequests();
+    loadProjects();
+  }, []);
+
+  // tasks for form
   useEffect(() => {
     if (!formData.project) {
       setTasks([]);
@@ -205,10 +241,7 @@ export default function TimeRequestTabs() {
     (async () => {
       try {
         const opts = getAuthOptions();
-        const res = await fetch(`${API_BASE}/tasks/?project=${formData.project!.id}`, {
-          ...opts,
-        });
-        console.log("loadTasks status:", res.status);
+        const res = await fetch(`${API_BASE}/tasks/?project=${formData.project!.id}`, { ...opts });
         if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
         setTasks(await res.json());
       } catch (e) {
@@ -218,11 +251,19 @@ export default function TimeRequestTabs() {
     })();
   }, [formData.project]);
 
-  useEffect(() => {
-    // initial load
-    loadRequests();
-    loadProjects();
-  }, []);
+  const getProjectName = (r: TimeRequest) => {
+    if (!r.project && r.project !== 0) return "—";
+    if (typeof r.project === "object") return r.project.name ?? "—";
+    const p = projects.find((pp) => pp.id === r.project);
+    return p ? p.name : String(r.project);
+  };
+
+  const getTaskTitle = (r: TimeRequest) => {
+    if (!r.task && r.task !== 0) return "—";
+    if (typeof r.task === "object") return r.task.title ?? "—";
+    const t = taskMap[r.task as number];
+    return t ? t.title : String(r.task);
+  };
 
   const openAdd = () => {
     setEditRequest(null);
@@ -231,7 +272,6 @@ export default function TimeRequestTabs() {
   };
 
   const openEdit = (r: TimeRequest) => {
-    // normalize incoming shapes if they are objects or ids
     setEditRequest(r);
     setFormData({
       project: typeof r.project === "object" ? r.project : (projects.find(p => p.id === (r.project as number)) ?? null),
@@ -247,12 +287,10 @@ export default function TimeRequestTabs() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
     if (!formData.project || !formData.task) {
       console.error("project and task required");
       return;
     }
-
     const [h1, m1] = formData.timeFrom.split(":");
     const [h2, m2] = formData.timeTo.split(":");
     const payload = {
@@ -264,31 +302,21 @@ export default function TimeRequestTabs() {
       description: formData.description,
       status: formData.status,
     };
-
     const url = editRequest ? `${API_BASE}/time-requests/${editRequest.id}/` : `${API_BASE}/time-requests/`;
     const method = editRequest ? "PATCH" : "POST";
-
     try {
       const opts = getAuthOptions();
-      console.log("Submitting to", url, "opts:", opts, "payload:", payload);
       const res = await fetch(url, {
         method,
         ...opts,
         body: JSON.stringify(payload),
       });
-
       const text = await res.text();
-      console.log("Save status:", res.status, "response:", text);
-
       if (!res.ok) {
         let message = text;
-        try {
-          const j = JSON.parse(text);
-          message = JSON.stringify(j);
-        } catch (err) { }
+        try { message = JSON.stringify(JSON.parse(text)); } catch {}
         throw new Error(`Save failed: ${res.status} ${message}`);
       }
-
       await loadRequests();
       setShowModal(false);
     } catch (err) {
@@ -297,158 +325,286 @@ export default function TimeRequestTabs() {
     }
   };
 
-  const renderTable = (status: string) => (
-    <>
+  // NEW canEditOrDelete: disallow for project owner (recipient); allow for creator and staff
+  const canEditOrDelete = (r: TimeRequest) => {
+    // require current user known
+    if (!currentUser) return false;
+
+    // staff should keep full power
+    if (currentUser.is_staff) return true;
+
+    // if current user is the project owner (the recipient) -> explicitly disallow
+    const ownerId = (r.project_owner ?? getProjectOwnerIdFromProject(typeof r.project === "object" ? r.project : null)) as number | null;
+    if (ownerId && ownerId === currentUser.id) return false;
+
+    // prefer server-provided flag if present
+    if (typeof r.can_delete === "boolean") return !!r.can_delete;
+    if (typeof r.is_creator === "boolean") return !!r.is_creator;
+
+    // fallback to ID comparison (creator)
+    const uid = (r.user_id ?? (typeof r.user === "object" ? (r.user as UserObj).id : undefined)) as number | undefined;
+    if (!uid) return false;
+    return uid === currentUser.id;
+  };
+
+  const canApproveOrReject = (r: TimeRequest) => {
+    if (typeof r.can_approve === "boolean") return !!r.can_approve;
+
+    if (!currentUser) return false;
+    if (currentUser.is_staff) return true;
+
+    // Prefer explicit project_owner field when provided
+    const ownerId = (r.project_owner ?? getProjectOwnerIdFromProject(typeof r.project === "object" ? r.project : null)) as number | null;
+    if (ownerId && ownerId === currentUser.id) return true;
+
+    return false;
+  };
+
+  // PATCH to change status to APPROVED / REJECTED
+  const patchStatus = async (id: number, statusVal: "APPROVED" | "REJECTED") => {
+    setActionLoading(s => ({ ...s, [id]: true }));
+    try {
+      const opts = getAuthOptions();
+      const res = await fetch(`${API_BASE}/time-requests/${id}/`, {
+        method: "PATCH",
+        ...opts,
+        body: JSON.stringify({ status: statusVal }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`Status update failed ${res.status}: ${t}`);
+      }
+      await loadRequests();
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message);
+    } finally {
+      setActionLoading(s => ({ ...s, [id]: false }));
+    }
+  };
+
+  // Approve/Reject now act directly (no confirm)
+  const handleApprove = (r: TimeRequest) => {
+    if (!canApproveOrReject(r)) {
+      alert("Not allowed");
+      return;
+    }
+    // direct approve
+    void patchStatus(r.id, "APPROVED");
+  };
+
+  const handleReject = (r: TimeRequest) => {
+    if (!canApproveOrReject(r)) {
+      alert("Not allowed");
+      return;
+    }
+    // direct reject
+    void patchStatus(r.id, "REJECTED");
+  };
+
+  const handleDelete = async (r: TimeRequest) => {
+    if (!canEditOrDelete(r)) return alert("Not allowed");
+    if (!confirm("Delete this time request? This cannot be undone.")) return;
+    setActionLoading(s => ({ ...s, [r.id]: true }));
+    try {
+      const opts = getAuthOptions();
+      const res = await fetch(`${API_BASE}/time-requests/${r.id}/`, {
+        method: "DELETE",
+        ...opts,
+      });
+      if (res.status !== 204 && !res.ok) {
+        const t = await res.text();
+        throw new Error(`Delete failed ${res.status}: ${t}`);
+      }
+      await loadRequests();
+    } catch (err) {
+      console.error(err);
+      alert((err as Error).message);
+    } finally {
+      setActionLoading(s => ({ ...s, [r.id]: false }));
+    }
+  };
+
+  const renderActions = (r: TimeRequest) => {
+    const editAllowed = canEditOrDelete(r);
+    const approveAllowed = canApproveOrReject(r) && r.status === "PENDING";
+    const rejectAllowed = canApproveOrReject(r) && r.status === "PENDING";
+    const busy = !!actionLoading[r.id];
+
+    return (
+      <div className="d-flex gap-2">
+        <Button size="sm" variant="outline-primary" onClick={() => editAllowed ? openEdit(r) : alert("Not allowed")} disabled={!editAllowed}>
+          Edit
+        </Button>
+
+        <Button size="sm" variant="outline-danger" onClick={() => handleDelete(r)} disabled={!editAllowed || busy}>
+          {busy ? "..." : "Delete"}
+        </Button>
+
+        {approveAllowed && (
+          <Button size="sm" className="btn btn-success" onClick={() => handleApprove(r)} disabled={busy}>
+            {actionLoading[r.id] ? "..." : "Approve"}
+          </Button>
+        )}
+
+        {rejectAllowed && (
+          <Button size="sm" className="btn btn-danger" onClick={() => handleReject(r)} disabled={busy}>
+            {actionLoading[r.id] ? "..." : "Reject"}
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  // dynamic counts for cards
+  const counts = useMemo(() => {
+    const p = (requests.PENDING || []).length;
+    const a = (requests.APPROVED || []).length;
+    const r = (requests.REJECTED || []).length;
+    // Holiday heuristic: any approved request with "holiday" in description (case-insensitive)
+    const h = (requests.APPROVED || []).filter(req => (req.description || "").toLowerCase().includes("holiday")).length;
+    return { PENDING: p, APPROVED: a, REJECTED: r, HOLIDAY: h };
+  }, [requests]);
+
+  const cardDefs = [
+    { key: 'APPROVED', title: 'Approved Request', border: 'border-blue', textClass: 'txt-clr-blue', count: counts.APPROVED, svg: (
+      <svg width="16" height="20" viewBox="0 0 16 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 0H2C0.9 0 0.0100002 0.9 0.0100002 2L0 18C0 19.1 0.89 20 1.99 20H14C15.1 20 16 19.1 16 18V6L10 0ZM6.94 16L3.4 12.46L4.81 11.05L6.93 13.17L11.17 8.93L12.58 10.34L6.94 16ZM9 7V1.5L14.5 7H9Z" fill="#2F6CE5" /></svg>
+    ) },
+    { key: 'PENDING', title: 'Pending Request', border: 'border-green', textClass: 'txt-clr-green', count: counts.PENDING, svg: (
+      <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM3.55556 14.4H9.77778V12.6H3.55556V14.4ZM3.55556 10.8H12.4444V9H3.55556V10.8ZM3.55556 7.2H12.4444V5.4H3.55556V7.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#22C55E" /></svg>
+    ) },
+    { key: 'HOLIDAY', title: 'Holiday', border: 'border-yellow', textClass: 'txt-clr-yellow', count: counts.HOLIDAY, svg: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.02428 0.175747C0.78997 -0.0585756 0.410062 -0.0585837 0.175747 0.175731C-0.0585756 0.410046 -0.0585837 0.789954 0.175731 1.02427L4.85958 5.70822C4.3547 5.91968 4.00001 6.41847 4.00001 7.00008V8.00009H5.20002V7.00008L5.2053 6.95424C5.22603 6.86592 5.30534 6.80008 5.40002 6.80008H5.95145L7.94913 8.79778H1.39925C0.832154 8.79778 0.581575 9.51187 1.0243 9.86627L4.80001 12.8885V14.2038C4.80001 15.198 5.60591 16.0039 6.59999 16.0039H9.39635C10.3905 16.0039 11.1964 15.198 11.1964 14.2038V12.8884L11.6647 12.5134L14.9757 15.8246C15.21 16.0589 15.5899 16.0589 15.8243 15.8246C16.0586 15.5903 16.0586 15.2103 15.8243 14.976L1.02428 0.175747ZM10.8109 11.6597L10.2213 12.1318C10.0792 12.2457 9.99635 12.418 9.99635 12.6001V14.2038C9.99635 14.5352 9.72771 14.8038 9.39635 14.8038H6.59999C6.26866 14.8038 6.00003 14.5352 6.00003 14.2038V12.6001C6.00003 12.418 5.91723 12.2456 5.77497 12.1317L3.10901 9.99779H9.14906L10.8109 11.6597Z" fill="#D08700" /><path d="M8.00008 4.80005C7.72496 4.80005 7.46064 4.75376 7.21455 4.66852L5.73161 3.18559C5.64639 2.93945 5.6001 2.67514 5.6001 2.40003C5.6001 1.07452 6.67463 0 8.00008 0C9.32562 0 10.4001 1.07452 10.4001 2.40003C10.4001 3.72552 9.32562 4.80005 8.00008 4.80005ZM8.00008 1.20001C7.33736 1.20001 6.80007 1.73728 6.80007 2.40003C6.80007 3.06277 7.33736 3.60004 8.00008 3.60004C8.66289 3.60004 9.2001 3.06277 9.2001 2.40003C9.2001 1.73728 8.66289 1.20001 8.00008 1.20001Z" fill="#D08700" /></svg>
+    ) },
+    { key: 'REJECTED', title: 'Reject Request', border: 'border-red', textClass: 'txt-clr-red', count: counts.REJECTED, svg: (
+      <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM3.55556 14.4H9.77778V12.6H3.55556V14.4ZM3.55556 10.8H12.4444V9H3.55556V10.8ZM3.55556 7.2H12.4444V5.4H3.55556V7.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#D00E00" /><path d="M15 2.5L1 17" stroke="#D00E00" stroke-width="2" /></svg>
+    ) },
+  ];
+
+  const renderTable = (status: string) => {
+    const colCount = status === 'PENDING' ? 10 : 9; // actions column only for pending
+    return (
       <div className="container-fluid">
-        <div className="row mb-4">
-          <div className="col-md-3 col-sm-6">
-            <div className="card g-card border-blue" role="button" title="View tasks you created">
-              <div className="icon mb-2 d-flex align-items-center justify-content-between">
-                <small className="txt-clr-blue">Approved Request</small>
-                <svg width="16" height="20" viewBox="0 0 16 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 0H2C0.9 0 0.0100002 0.9 0.0100002 2L0 18C0 19.1 0.89 20 1.99 20H14C15.1 20 16 19.1 16 18V6L10 0ZM6.94 16L3.4 12.46L4.81 11.05L6.93 13.17L11.17 8.93L12.58 10.34L6.94 16ZM9 7V1.5L14.5 7H9Z" fill="#2F6CE5" />
-                </svg>
+        <div className="row">
+          <div className="col-12">
+            <div className="table-responsive">
+              <Table className=" g-table min-w-13">
+                <thead className="table-light">
+                  <tr>
+                    <th>#</th>
+                    <th>Project</th>
+                    <th>Task</th>
+                    <th>Date</th>
+                    <th>Time From</th>
+                    <th>Time To</th>
+                    <th>Duration</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    {status === 'PENDING' && <th>Actions</th>}
+                  </tr>
+                </thead>
 
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={colCount} className="text-center py-4">
+                        <Spinner animation="border" size="sm" /> Loading...
+                      </td>
+                    </tr>
+                  ) : requests[status]?.length === 0 ? (
+                    <tr>
+                      <td colSpan={colCount} className="text-center py-3">
+                        No records found
+                      </td>
+                    </tr>
+                  ) : (
+                    requests[status]?.map((r, idx) => (
+                      <tr key={r.id}>
+                        <td>{idx + 1}</td>
+                        <td>{getProjectName(r)}</td>
+                        <td>{getTaskTitle(r)}</td>
+                        <td>{r.date}</td>
+                        <td>{r.time_from.slice(0, 5)}</td>
+                        <td>{r.time_to.slice(0, 5)}</td>
+                        <td>{r.requested_duration}</td>
+                        <td title={r.description}>
+                          {r.description.length > 25 ? r.description.slice(0, 25) + "..." : r.description}
+                        </td>
 
+                        <td>
+                          <span
+                            className={`badge ${r.status === "PENDING"
+                                ? "bg-warning"
+                                : r.status === "APPROVED"
+                                  ? "bg-success"
+                                  : "bg-danger"
+                              }`}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
 
-              </div>
-              <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-blue">6</h5>
-
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3 col-sm-6">
-            <div className="card g-card border-green">
-              <div className="icon mb-2 d-flex align-items-center justify-content-between">
-                <small className="txt-clr-green">Pending Request</small>
-                <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM3.55556 14.4H9.77778V12.6H3.55556V14.4ZM3.55556 10.8H12.4444V9H3.55556V10.8ZM3.55556 7.2H12.4444V5.4H3.55556V7.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#22C55E" />
-                </svg>
-
-
-
-
-              </div>
-              <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-green">6</h5>
-
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3 col-sm-6">
-            <div className="card g-card border-yellow">
-              <div className="icon mb-2 d-flex align-items-center justify-content-between">
-                <small className="txt-clr-yellow">Holiday</small>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1.02428 0.175747C0.78997 -0.0585756 0.410062 -0.0585837 0.175747 0.175731C-0.0585756 0.410046 -0.0585837 0.789954 0.175731 1.02427L4.85958 5.70822C4.3547 5.91968 4.00001 6.41847 4.00001 7.00008V8.00009H5.20002V7.00008L5.2053 6.95424C5.22603 6.86592 5.30534 6.80008 5.40002 6.80008H5.95145L7.94913 8.79778H1.39925C0.832154 8.79778 0.581575 9.51187 1.0243 9.86627L4.80001 12.8885V14.2038C4.80001 15.198 5.60591 16.0039 6.59999 16.0039H9.39635C10.3905 16.0039 11.1964 15.198 11.1964 14.2038V12.8884L11.6647 12.5134L14.9757 15.8246C15.21 16.0589 15.5899 16.0589 15.8243 15.8246C16.0586 15.5903 16.0586 15.2103 15.8243 14.976L1.02428 0.175747ZM10.8109 11.6597L10.2213 12.1318C10.0792 12.2457 9.99635 12.418 9.99635 12.6001V14.2038C9.99635 14.5352 9.72771 14.8038 9.39635 14.8038H6.59999C6.26866 14.8038 6.00003 14.5352 6.00003 14.2038V12.6001C6.00003 12.418 5.91723 12.2456 5.77497 12.1317L3.10901 9.99779H9.14906L10.8109 11.6597Z" fill="#D08700" />
-                  <path d="M8.00008 4.80005C7.72496 4.80005 7.46064 4.75376 7.21455 4.66852L5.73161 3.18559C5.64639 2.93945 5.6001 2.67514 5.6001 2.40003C5.6001 1.07452 6.67463 0 8.00008 0C9.32562 0 10.4001 1.07452 10.4001 2.40003C10.4001 3.72552 9.32562 4.80005 8.00008 4.80005ZM8.00008 1.20001C7.33736 1.20001 6.80007 1.73728 6.80007 2.40003C6.80007 3.06277 7.33736 3.60004 8.00008 3.60004C8.66289 3.60004 9.2001 3.06277 9.2001 2.40003C9.2001 1.73728 8.66289 1.20001 8.00008 1.20001Z" fill="#D08700" />
-                  <path d="M14.5957 8.80078H11.3433L13.5495 11.0071L14.9707 9.86919C15.4134 9.51471 15.1627 8.80078 14.5957 8.80078Z" fill="#D08700" />
-                  <path d="M9.34593 6.79959L8.146 5.59961H10.5963C11.3308 5.59961 11.9332 6.1653 11.9916 6.88479L11.9963 6.99959V7.9996H10.7963V6.99959C10.7963 6.90495 10.7304 6.82559 10.6421 6.80487L10.5963 6.79959H9.34593Z" fill="#D08700" />
-                </svg>
-
-
-
-
-
-              </div>
-              <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-yellow">6</h5>
-
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3 col-sm-6">
-            <div className="card g-card border-red">
-              <div className="icon mb-2 d-flex align-items-center justify-content-between">
-                <small className="txt-clr-red">Reject Request</small>
-                <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM3.55556 14.4H9.77778V12.6H3.55556V14.4ZM3.55556 10.8H12.4444V9H3.55556V10.8ZM3.55556 7.2H12.4444V5.4H3.55556V7.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#D00E00" />
-                  <path d="M15 2.5L1 17" stroke="#D00E00" stroke-width="2" />
-                </svg>
-
-
-
-
-              </div>
-              <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-red">6</h5>
-
-              </div>
+                        {status === 'PENDING' ? <td>{renderActions(r)}</td> : null}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
             </div>
           </div>
         </div>
-
-
-
-      
-      <Table className="table-responsive g-table">
-        <thead className="table-primary">
-          <tr>
-            <th>Member</th>
-            <th>Project</th>
-            <th>Task</th>
-            <th>Date</th>
-            <th>Requested Duration</th>
-            <th>Time Range</th>
-            <th>Status</th>
-            {status === "PENDING" && <th>Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {requests[status].map((r) => (
-            <tr key={r.id}>
-              <td>{r.user}</td>
-              <td>{getProjectName(r)}</td>
-              <td>{getTaskTitle(r)}</td>
-              <td>{r.date}</td>
-              <td>{r.requested_duration}</td>
-              <td>{`${r.time_from} - ${r.time_to}`}</td>
-              <td>{r.status}</td>
-              {status === "PENDING" && (
-                <td>
-                  <Button size="sm" variant="outline-primary" onClick={() => openEdit(r)}>
-                    Edit
-                  </Button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </Table>
       </div>
-    </>
-
-
-
-
-  );
+    );
+  };
 
   return (
-    <div className="container-fluid mt-5">
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <h2>Time Request</h2>
-        <Button onClick={openAdd}>+ Add Request</Button>
+    <>
+      <div className="container-fluid px-sm-0 py-4">
+        <div className="d-flex align-items-center justify-content-between mb-4">
+          <h2>Time Request</h2>
+          <Button onClick={openAdd}>+ Add Request</Button>
+        </div>
+
+        <div className="row mb-4 g-4">
+          {cardDefs.map((c) => (
+            <div className="col-md-3 col-sm-6" key={c.key}>
+              <div className={`card g-card ${c.border}`} role="button" title={c.title}>
+                <div className="icon mb-2 d-flex align-items-center justify-content-between">
+                  <small className={c.textClass}>{c.title}</small>
+                  {c.svg}
+                </div>
+                <div className="count">
+                  <h5 className="mb-0 fw-bold">{c.count}</h5>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {loading ? (
+          <Spinner animation="border" />
+        ) : (
+          <>
+            <Nav variant="tabs" activeKey={activeTab} onSelect={(k) => setActiveTab(k as any)}>
+              <Nav.Item>
+                <Nav.Link eventKey="PENDING">Pending</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="APPROVED">Approved</Nav.Link>
+              </Nav.Item>
+              <Nav.Item>
+                <Nav.Link eventKey="REJECTED">Rejected</Nav.Link>
+              </Nav.Item>
+            </Nav>
+            <div className="row">
+              <div className="col-lg-12">
+                <h5 className="mt-4">Time Request Data</h5>
+              </div>
+            </div>
+            {renderTable(activeTab)}
+          </>
+        )}
       </div>
-      {loading ? (
-        <Spinner animation="border" />
-      ) : (
-        <>
-          <Nav variant="tabs" activeKey={activeTab} onSelect={(k) => setActiveTab(k as any)}>
-            <Nav.Item>
-              <Nav.Link eventKey="PENDING">Pending</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="APPROVED">Approved</Nav.Link>
-            </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="REJECTED">Rejected</Nav.Link>
-            </Nav.Item>
-          </Nav>
-          <h5 className="mt-4">Time Request Data</h5>
-          {renderTable(activeTab)}
-        </>
-      )}
 
       <Modal show={showModal} onHide={() => setShowModal(false)}>
         <Form onSubmit={handleSubmit}>
@@ -529,6 +685,6 @@ export default function TimeRequestTabs() {
           </Modal.Footer>
         </Form>
       </Modal>
-    </div>
+    </>
   );
 }

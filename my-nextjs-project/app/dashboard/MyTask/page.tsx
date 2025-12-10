@@ -195,7 +195,9 @@ export default function MyTaskPage() {
         {rows.length === 0 ? (
           <p>No tasks found.</p>
         ) : (
-          <table className="table g-table" style={{ width: "100%", marginTop: "0.25rem" }}>
+
+<div className="table-responsive my-4">
+  <table className="table g-table" style={{ minWidth: "1000px", marginTop: "0.25rem" }}>
             <thead>
               <tr>
                 {["Project", "Title", "Due Date", "Priority"].map(h => (
@@ -221,6 +223,9 @@ export default function MyTaskPage() {
               })}
             </tbody>
           </table>
+</div>
+
+          
         )}
       </section>
     );

@@ -80,8 +80,8 @@ const handleCopy = async () => {
 
 
 <div className="row mb-4">
-  <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
-    <h2 className="page-heading-wrapper">Time Tracker</h2>
+  <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <h2 className="page-heading-wrapper">Activity Level</h2>
     <div className="d-flex justify-content-between align-items-center gap-2">
      <button className="btn g-btn me-2" onClick={handleShow}>
             +Schedule
@@ -93,8 +93,8 @@ const handleCopy = async () => {
       </div>
 
 
-
-      <table className="table g-table text-center align-middle">
+<div className="table-responsive">
+  <table className="table g-table min-w-10">
         <thead className="table-dark">
           <tr>
             <th>Member</th>
@@ -132,6 +132,8 @@ const handleCopy = async () => {
           ))}
         </tbody>
       </table>
+</div>
+      
 
       {/* Schedule Modal */}
       {showModal && (

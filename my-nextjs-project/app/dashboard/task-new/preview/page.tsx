@@ -1,4 +1,3 @@
-// TasksPreviewPage.updated.persist.jsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -6,18 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Form, Spinner, Alert } from "react-bootstrap";
 
 /**
- * TasksPreviewPage — updated to persist AI suggestions
- *
- * - Use "Get AI suggestions" to get suggestions (unchanged).
- * - New: "Persist suggestions" button will call the backend assign endpoint
- *   for each suggested task to actually save the assignee on the server.
- *
- * Requirements:
- * - Serializer must expose `assignment_locked` (read-only) for server-side locks.
- * - The authenticated user (token) must be the task creator or staff to assign,
- *   or backend Option B allows assign if created_by is null and user is authenticated.
- *
- * Configure NEXT_PUBLIC_API_BASE to change base URL (defaults to http://127.0.0.1:8000/api).
+ * TasksPreviewPage — updated to show AI suggestions in cards instead of list
  */
 
 const PREVIEW_STORAGE_KEY = "task_preview_items";
@@ -43,6 +31,9 @@ export default function TasksPreviewPage() {
   // local user context (best-effort; optionally provided via localStorage)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserIsStaff, setCurrentUserIsStaff] = useState<boolean>(false);
+
+  // State for member data (for card display)
+  const [members, setMembers] = useState<any[]>([]);
 
   useEffect(() => {
     try {
@@ -73,7 +64,7 @@ export default function TasksPreviewPage() {
       setProjectLabels({});
     }
 
-    // best-effort read user metadata from localStorage (depends on your frontend auth)
+    // best-effort read user metadata from localStorage
     try {
       const uid = localStorage.getItem("user_id") || localStorage.getItem("userId") || localStorage.getItem("me_id");
       if (uid) setCurrentUserId(String(uid));
@@ -82,6 +73,40 @@ export default function TasksPreviewPage() {
     } catch (e) {
       // ignore
     }
+  }, []);
+
+  // Fetch members for card display
+  useEffect(() => {
+    const fetchMembers = async () => {
+      const token = localStorage.getItem("token");
+      const endpoints = [
+        `${API_BASE}/members/`,
+        `${API_BASE}/api/members/`,
+        `${API_BASE}/users/members/`,
+      ];
+
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            headers: token ? { Authorization: `Token ${token}` } : undefined,
+          });
+          if (res.status === 404) continue;
+          if (!res.ok) continue;
+          const json = await res.json();
+          if (Array.isArray(json)) {
+            setMembers(json);
+            return;
+          } else if (json.results && Array.isArray(json.results)) {
+            setMembers(json.results);
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to fetch members from", url, err);
+        }
+      }
+    };
+
+    fetchMembers();
   }, []);
 
   const handleBack = () => {
@@ -156,7 +181,7 @@ export default function TasksPreviewPage() {
     return { score: total, reason };
   };
 
-  async function fetchMembers(): Promise<any[] | null> {
+  async function fetchMembersForAI(): Promise<any[] | null> {
     const token = localStorage.getItem("token");
     const endpoints = [
       `${API_BASE}/members/`,
@@ -218,6 +243,204 @@ export default function TasksPreviewPage() {
     }));
   };
 
+  // ---------- Helper for developer type display ----------
+  const devTypeFriendly = (val?: string | null) => {
+    if (!val) return '—';
+    const v = String(val).toLowerCase();
+    switch (v) {
+      case 'web':
+        return 'Web Developer';
+      case 'mobile':
+        return 'Mobile Developer';
+      case 'uiux':
+      case 'ui/ux':
+      case 'ui-ux':
+        return 'UI/UX Designer';
+      case 'other':
+        return 'Other';
+      default:
+        return val;
+    }
+  };
+
+  // ---------- Map member to card data ----------
+  const mapMemberToCard = (m: any, taskData: any) => {
+    const username = m.username || (m.user && (m.user.username || m.user.email)) || `Member#${m.id}`;
+    const experience = (m.experience !== undefined && m.experience !== null) ? String(m.experience) : '';
+    const skillsRaw = m.skills || m.skill || '';
+    const skillsArr = Array.isArray(skillsRaw)
+      ? skillsRaw
+      : String(skillsRaw)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const developerType = m.developer_type ?? m.developerType ?? m.developerTypeName ?? null;
+
+    return {
+      id: m.id,
+      name: username,
+      task: taskData?.title || 'Suggested task',
+      reason: taskData?.reason || `Task: ${taskData?.title || 'N/A'}`,
+      experience,
+      match: `${taskData?.confidence || 50}% Match`,
+      skills: skillsArr,
+      profileImg: m.profile_image || m.avatar || '/assets/images/profile-img.jpg',
+      topImg: '/assets/images/new/sugg_card_top_img.svg',
+      developerType,
+      taskId: taskData?.id,
+      confidence: taskData?.confidence,
+      memberId: m.id,
+      assignment_locked: taskData?.assignment_locked || false,
+      assignedUserId: taskData?.assignedUserId || null,
+    };
+  };
+
+  // ---------- Render AI suggestion cards ----------
+  const renderAISuggestionCards = () => {
+    const suggestions = aiResults && aiResults.length > 0
+      ? aiResults
+      : (tasks || []).map((t) => {
+          const c = t.ai_chosen_member;
+          if (!c) return null;
+          return {
+            taskId: t.id ?? t.pk,
+            memberId: c.memberId,
+            memberName: c.memberName,
+            confidence: c.confidence,
+            reason: c.reason,
+            assignedUserId: c.assignedUserId,
+            assignment_locked: c.assignment_locked,
+            raw: c.raw,
+            taskTitle: t.title,
+          };
+        }).filter(Boolean);
+
+    if (!suggestions || suggestions.length === 0) {
+      return (
+        <div className="text-muted text-center py-5">
+          No AI suggestions yet. Click "Get AI suggestions" to run.
+        </div>
+      );
+    }
+
+    // Create card data for each suggestion
+    const cardDataList = suggestions.map((suggestion: any) => {
+      // Find the member in the members list
+      const member = members.find(m => m.id === suggestion.memberId) || 
+                    members.find(m => m.user_id === suggestion.memberId) || 
+                    suggestion.raw;
+      
+      // If no member found, create a basic one
+      const memberData = member || {
+        id: suggestion.memberId,
+        username: suggestion.memberName || `Member ${suggestion.memberId}`,
+        experience: 0,
+        skills: [],
+        developer_type: null,
+      };
+
+      return mapMemberToCard(memberData, {
+        id: suggestion.taskId,
+        title: suggestion.taskTitle || `Task ${suggestion.taskId}`,
+        confidence: suggestion.confidence,
+        reason: suggestion.reason,
+        assignment_locked: suggestion.assignment_locked,
+        assignedUserId: suggestion.assignedUserId,
+      });
+    });
+
+    return (
+      <div className="row">
+        {cardDataList.map((cardData, idx) => (
+          <div className="col-lg-3 col-md-6 mb-4" key={cardData.id || idx}>
+            <div className="card shadow ai-sugg-card text-center p-3 position-relative h-100">
+              <img className="sugg_card_top_img" src={cardData.topImg} alt="Top" />
+
+              <div className="card-header position-relative p-0 mb-3 rounded-top">
+                <div className="avatar-container">
+                  <img 
+                    src={cardData.profileImg} 
+                    alt="Avatar" 
+                    className="rounded-circle avatar-img" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/assets/images/profile-img.jpg';
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="card-body p-2 sugg-card-data-wrap">
+                <ul className="sugg-card-data-wrap">
+                  <li style={{ color: "#2F6CE5" }}>{cardData.name}</li>
+                  <li>{cardData.task}</li>
+                  <li>Reason: {cardData.reason}</li>
+                  <li>
+                    <span>Exp: {cardData.experience || '—'}</span>{" "}
+                    <span style={{ float: 'right' }}>{cardData.match}</span>
+                  </li>
+                  <li>
+                    <strong>Developer:</strong> {devTypeFriendly(cardData.developerType)}
+                  </li>
+                </ul>
+
+                <div className="mb-4 d-flex justify-content-between flex-wrap">
+                  {(cardData.skills || []).slice(0, 3).map((tag: string, index: number) => (
+                    <span key={index} className="badge bg-light text-dark rounded-pill mx-1 my-1">
+                      {tag}
+                    </span>
+                  ))}
+                  {(cardData.skills || []).length > 3 && (
+                    <span className="badge bg-light text-dark rounded-pill mx-1 my-1">
+                      +{(cardData.skills || []).length - 3} more
+                    </span>
+                  )}
+                </div>
+
+                <div className="d-flex justify-content-center gap-2">
+                  <button 
+                    className="btn g-btn" 
+                    onClick={() => handleCardAssign(cardData)}
+                    disabled={cardData.assignment_locked || cardData.assignedUserId}
+                  >
+                    {cardData.assignedUserId ? "Assigned" : "Assign"}
+                  </button>
+                  <button 
+                    className="btn g-btn" 
+                    onClick={() => handleViewProfile(cardData)}
+                  >
+                    View Profile
+                  </button>
+                </div>
+
+                {cardData.assignment_locked && (
+                  <div className="mt-2">
+                    <span className="badge bg-warning text-dark">Locked</span>
+                  </div>
+                )}
+                {cardData.assignedUserId && (
+                  <div className="mt-2">
+                    <span className="badge bg-success">Persisted (User #{cardData.assignedUserId})</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleCardAssign = (cardData: any) => {
+    console.log('Assign clicked for', cardData);
+    alert(`Assign: ${cardData.name} (Task: ${cardData.taskId})`);
+  };
+
+  const handleViewProfile = (cardData: any) => {
+    console.log('View profile', cardData);
+    alert(`View profile: ${cardData.name}`);
+  };
+
   // ---------- Helpers for lock & acceptance ----------
   const isTaskLocked = (t: any) => {
     if (!t) return false;
@@ -234,12 +457,11 @@ export default function TasksPreviewPage() {
     return String(picked.memberId) === String(currentUserId) || String(picked.assignedUserId) === String(currentUserId);
   };
 
-  // ---------- Persist assignments (NEW) ----------
+  // ---------- Persist assignments ----------
   const handlePersistAssignments = async () => {
     setPersistError(null);
     setPersistSuccessCount(null);
 
-    // Collect suggestions (server-returned aiResults preferred)
     const suggestions = aiResults && aiResults.length > 0
       ? aiResults
       : (tasks || []).map((t) => {
@@ -262,7 +484,6 @@ export default function TasksPreviewPage() {
 
       if (!taskId || !memberId) continue;
 
-      // Skip if already persisted locally
       const localTask = (tasks || []).find((t) => String(t.id ?? t.pk) === String(taskId));
       if (localTask && localTask.ai_chosen_member && localTask.ai_chosen_member.assignedUserId) continue;
 
@@ -291,55 +512,61 @@ export default function TasksPreviewPage() {
           }
         }
 
-        // success — re-fetch the task detail
-                const respJson = await res.json().catch(() => null);
-                try {
-                  const detailUrl = `${API_BASE}/tasksai/${taskId}/`;
-                  const detailRes = await fetch(detailUrl, { headers: token ? { Authorization: `Token ${token}` } : {} });
-                  if (detailRes.ok) {
-                    const detail = await detailRes.json();
-                    successCount += 1;
-                    setTasks((prev) => {
-                      if (!prev) return prev;
-                      return prev.map((t) => {
-                        if (String(t.id ?? t.pk) !== String(taskId)) return t;
-                        return { ...t, ...detail, ai_chosen_member: { ...(t.ai_chosen_member || {}), assignedUserId: detail.assignee ?? memberId, assignment_locked: detail.assignment_locked ?? true } };
-                      });
-                    });
-                  } else {
-                    // optimistic update fallback
-                    successCount += 1;
-                    setTasks((prev) => {
-                      if (!prev) return prev;
-                      return prev.map((t) => {
-                        if (String(t.id ?? t.pk) !== String(taskId)) return t;
-                        const cloned = { ...t };
-                        const ai = cloned.ai_chosen_member ? { ...cloned.ai_chosen_member } : {};
-                        ai.assignedUserId = ai.assignedUserId || memberId;
-                        ai.assignment_locked = true;
-                        cloned.ai_chosen_member = ai;
-                        cloned.assignment_locked = true;
-                        return cloned;
-                      });
-                    });
-                  }
-                } catch (detailErr) {
-                  console.warn("Failed to fetch updated task detail for", taskId, detailErr);
-                  successCount += 1;
-                  setTasks((prev) => {
-                    if (!prev) return prev;
-                    return prev.map((t) => {
-                      if (String(t.id ?? t.pk) !== String(taskId)) return t;
-                      const cloned = { ...t };
-                      const ai = cloned.ai_chosen_member ? { ...cloned.ai_chosen_member } : {};
-                      ai.assignedUserId = ai.assignedUserId || memberId;
-                      ai.assignment_locked = true;
-                      cloned.ai_chosen_member = ai;
-                      cloned.assignment_locked = true;
-                      return cloned;
-                    });
-                  });
-                }
+        const respJson = await res.json().catch(() => null);
+        try {
+          const detailUrl = `${API_BASE}/tasksai/${taskId}/`;
+          const detailRes = await fetch(detailUrl, { headers: token ? { Authorization: `Token ${token}` } : {} });
+          if (detailRes.ok) {
+            const detail = await detailRes.json();
+            successCount += 1;
+            setTasks((prev) => {
+              if (!prev) return prev;
+              return prev.map((t) => {
+                if (String(t.id ?? t.pk) !== String(taskId)) return t;
+                return { 
+                  ...t, 
+                  ...detail, 
+                  ai_chosen_member: { 
+                    ...(t.ai_chosen_member || {}), 
+                    assignedUserId: detail.assignee ?? memberId, 
+                    assignment_locked: detail.assignment_locked ?? true 
+                  } 
+                };
+              });
+            });
+          } else {
+            successCount += 1;
+            setTasks((prev) => {
+              if (!prev) return prev;
+              return prev.map((t) => {
+                if (String(t.id ?? t.pk) !== String(taskId)) return t;
+                const cloned = { ...t };
+                const ai = cloned.ai_chosen_member ? { ...cloned.ai_chosen_member } : {};
+                ai.assignedUserId = ai.assignedUserId || memberId;
+                ai.assignment_locked = true;
+                cloned.ai_chosen_member = ai;
+                cloned.assignment_locked = true;
+                return cloned;
+              });
+            });
+          }
+        } catch (detailErr) {
+          console.warn("Failed to fetch updated task detail for", taskId, detailErr);
+          successCount += 1;
+          setTasks((prev) => {
+            if (!prev) return prev;
+            return prev.map((t) => {
+              if (String(t.id ?? t.pk) !== String(taskId)) return t;
+              const cloned = { ...t };
+              const ai = cloned.ai_chosen_member ? { ...cloned.ai_chosen_member } : {};
+              ai.assignedUserId = ai.assignedUserId || memberId;
+              ai.assignment_locked = true;
+              cloned.ai_chosen_member = ai;
+              cloned.assignment_locked = true;
+              return cloned;
+            });
+          });
+        }
       } catch (err) {
         console.error("Persist error for task", taskId, err);
         continue;
@@ -386,7 +613,7 @@ export default function TasksPreviewPage() {
           throw new Error("Backend returned malformed response (expected array).");
         }
 
-        const candidateMembers = await fetchMembers();
+        const candidateMembers = await fetchMembersForAI();
         const validatedResults: any[] = [];
         for (const item of json) {
           const taskId = item?.taskId ?? null;
@@ -459,7 +686,7 @@ export default function TasksPreviewPage() {
 
     // Client-side fallback
     try {
-      const members = await fetchMembers();
+      const members = await fetchMembersForAI();
       if (!members || members.length === 0) {
         setAiError("No members available for client-side matching.");
         setAiAssigning(false);
@@ -471,10 +698,28 @@ export default function TasksPreviewPage() {
 
       for (const t of payloadTasks) {
         const best = chooseBestLocal(t, members);
-        results.push({ taskId: t.id, memberId: best.memberId, memberName: best.memberName, confidence: best.confidence, reason: best.reason, raw: best.raw });
+        results.push({ 
+          taskId: t.id, 
+          memberId: best.memberId, 
+          memberName: best.memberName, 
+          confidence: best.confidence, 
+          reason: best.reason, 
+          raw: best.raw,
+          taskTitle: t.title 
+        });
         const idx = (updated || []).findIndex((x: any) => String(x.id ?? x.pk) === String(t.id));
         if (idx !== -1) {
-          updated[idx] = { ...updated[idx], ai_chosen_member: { memberId: best.memberId, memberName: best.memberName, confidence: best.confidence, reason: best.reason, raw: best.raw, assignment_locked: false } };
+          updated[idx] = { 
+            ...updated[idx], 
+            ai_chosen_member: { 
+              memberId: best.memberId, 
+              memberName: best.memberName, 
+              confidence: best.confidence, 
+              reason: best.reason, 
+              raw: best.raw, 
+              assignment_locked: false 
+            } 
+          };
         }
       }
 
@@ -501,16 +746,18 @@ export default function TasksPreviewPage() {
   };
 
   return (
-    <div className="container py-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h3>Created Tasks — Preview</h3>
-        <div className="d-flex gap-2">
-          <Button variant="secondary" onClick={handleBack}>
-            Back
-          </Button>
-          <Button variant="danger" onClick={handleClear}>
-            Clear Preview
-          </Button>
+    <div className="container-fluid py-5">
+      <div className="row mb-3">
+        <div className="col-lg-12 d-flex justify-content-between align-items-center gap-2">
+          <h2 className="">AI Created Tasks</h2>
+          <div className="d-flex justify-content-between align-items-center gap-2">
+            <Button variant="secondary" onClick={handleBack}>
+              Back
+            </Button>
+            <Button variant="danger" onClick={handleClear}>
+              Clear Preview
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -521,6 +768,7 @@ export default function TasksPreviewPage() {
           label="Use backend suggestions (preferred)"
           checked={useBackend}
           onChange={(e) => setUseBackend(e.target.checked)}
+          className="mb-0"
         />
         <Button variant="primary" onClick={handleGetAISuggestions} disabled={aiAssigning || !tasks || tasks.length === 0}>
           {aiAssigning ? (
@@ -546,7 +794,7 @@ export default function TasksPreviewPage() {
       {persistSuccessCount !== null && <Alert variant="success" className="mb-3">Persisted {persistSuccessCount} suggestion(s).</Alert>}
 
       {tasks === null ? (
-        <div>Loading preview…</div>
+        <div className="text-center py-5">Loading preview…</div>
       ) : tasks.length === 0 ? (
         <div className="alert alert-info">No tasks found for preview.</div>
       ) : (
@@ -610,39 +858,110 @@ export default function TasksPreviewPage() {
             </table>
           </div>
 
-          <div className="mb-4">
-            <h5>AI Suggestions</h5>
-            {(!aiResults || aiResults.length === 0) && !tasks.some((t: any) => t.ai_chosen_member) ? (
-              <div className="text-muted">No AI suggestions yet. Click "Get AI suggestions" to run.</div>
-            ) : (
-              <div>
-                <ul className="list-group">
-                  {(aiResults && aiResults.length > 0
-                    ? aiResults
-                    : tasks.map((t: any) => {
-                        const c = t.ai_chosen_member;
-                        return c ? { taskId: t.id ?? t.pk, memberId: c.memberId, memberName: c.memberName, confidence: c.confidence, reason: c.reason, assignedUserId: c.assignedUserId, assignment_locked: c.assignment_locked } : null;
-                      }).filter(Boolean)
-                  ).map((r: any, i: number) => (
-                    <li key={i} className="list-group-item d-flex justify-content-between align-items-start">
-                      <div>
-                        <strong>Task {r.taskId}</strong>
-                        <div className="small text-muted">{r.memberName ? `${r.memberName}` : "No member chosen"}</div>
-                        <div className="small text-muted">ID: {r.memberId ?? "—"} • Confidence: {r.confidence ?? "—"}</div>
-                        <div className="small">{r.reason ?? ""}</div>
-                      </div>
-                      <div className="text-end">
-                        {r.assignment_locked ? <span className="badge bg-warning text-dark me-2">Locked</span> : null}
-                        {r.assignedUserId ? <span className="badge bg-success">Persisted (User #{r.assignedUserId})</span> : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+          <section className="ai-suggestion-sec py-4">
+            <div className="container-fluid py-4">
+              <div className="row mb-3">
+                <div className="col-lg-12">
+                  <h2 className="">AI Suggestions</h2>
+                </div>
               </div>
-            )}
-          </div>
+              
+              {renderAISuggestionCards()}
+            </div>
+          </section>
         </>
       )}
+
+      <style jsx>{`
+        .page-heading-wrapper {
+          font-weight: 600;
+          font-size: 30px;
+          background: linear-gradient(263.66deg, #9A4AFD 1.73%, #955ADD 53.99%, #2F6CE5 98.27%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          text-fill-color: transparent;
+          line-height: normal;
+        }
+        .ai-suggestion-sec .ai-sugg-card {
+          border-radius: 30px;
+          overflow: hidden;
+          background-size: 100%;
+        }
+        .ai-sugg-card:before {
+          content: "";
+          position: absolute;
+          right: -40px;
+          top: 31px;
+          background: linear-gradient(263.66deg, rgba(154, 74, 253, 0.3483) 1.73%, rgba(149, 90, 221, 0.243) 7.99%, rgba(110, 52, 181, 0.243) 96.27%);
+          filter: blur(40px);
+          width: 50%;
+          height: 76%;
+        }
+        .ai-suggestion-sec .sugg_card_top_img {
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.25));
+        }
+        .ai-suggestion-sec .ai-sugg-card .card-header {
+          height: 110px;
+          position: relative;
+          background: transparent;
+          border: none;
+        }
+        .ai-suggestion-sec .avatar-container {
+          position: absolute;
+          top: 35px;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .ai-suggestion-sec .avatar-img {
+          width: 80px;
+          height: 80px;
+          filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.25));
+        }
+        .ai-suggestion-sec .sugg-card-data-wrap { 
+          text-align: start; 
+          padding: 0px; 
+        }
+        .ai-suggestion-sec .sugg-card-data-wrap li {
+          padding: 10px 0px;
+          border-bottom: 1.5px solid #C291FF;
+          font-weight: 700;
+          font-size: 14px;
+          list-style-type: none;
+          margin: 0;
+        }
+        .ai-suggestion-sec .sugg-card-data-wrap ul {
+          padding-left: 0;
+          margin-bottom: 0;
+        }
+        .ai-suggestion-sec .sugg-card-data-wrap .badge {
+          background: #FFFFFF;
+          box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.25);
+          border-radius: 30px;
+          padding: 7px 13px;
+          width: fit-content;
+        }
+        .g-btn {
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: none;
+          background: linear-gradient(263.66deg, #9A4AFD 1.73%, #955ADD 53.99%, #2F6CE5 98.27%);
+          color: white;
+          font-weight: 600;
+          transition: opacity 0.2s;
+        }
+        .g-btn:hover {
+          opacity: 0.9;
+          color: white;
+        }
+        .g-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 }

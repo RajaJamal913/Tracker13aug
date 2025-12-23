@@ -3643,6 +3643,76 @@ img.sugg_card_top_img {
     background: #0000005c;
     z-index: 999;
 }
+
+
+
+/* footer code  */
+        footer .btn-custom {
+        background-color: #a64bf4;
+        color: white;
+        border: none;
+    }
+    
+        footer .footer-logo {
+        max-width: 230px;
+        width: 100%;
+        height: auto;
+    }
+        footer {
+        background: linear-gradient(282deg, #9a4afd, #955add, #6e34b5);
+        background: linear-gradient(282deg, rgb(150, 72, 246), rgb(92, 44, 151));
+        background: linear-gradient(90deg, #7C29AB 0%, #9C51C7 50%, #5C2C97 100%);
+    }
+    
+    footer img.footer-logo {
+        max-width: 230px;
+        width: 100%;
+    }
+    
+    footer .social-icons-wrap {
+        display: flex;
+        align-items: center;
+        justify-content:center;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    
+    footer .social-icons-wrap>a {
+        background: #FFBB58;
+        width: 40px;
+        height: 40px;
+        border-radius: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    footer .social-icons-wrap>a>svg {
+        width: 20px;
+        height: 20px;
+    }
+    
+    footer .social-icons-wrap>a:hover {
+        background: white;
+        border: 0px solid;
+        color:#000000 !important;
+    }
+    footer .social-icons-wrap>a:hover svg path {
+         fill: #000000!important;
+    }
+    
+    footer a:hover {
+    font-weight: 500;
+}
+    footer {
+      
+        background: #006cfa;
+    }
+
+
+
+
+
 /* Responsive adjustments */
 @media (min-width: 1200px) {
 .HB,.sidebar-close-btn{

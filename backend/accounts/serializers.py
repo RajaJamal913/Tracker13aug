@@ -147,3 +147,30 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if data["new_password"] != data["confirm_password"]:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
         return data
+
+# accounts/serializers.py  (append or add near other serializers)
+
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class CurrentUserSerializer(serializers.ModelSerializer):
+    """
+    Stable response for `GET /api/users/me/` used by frontend.
+    Always includes id and username (and helpful extras).
+    """
+    full_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ("id", "username", "email", "first_name", "last_name", "full_name", "is_staff")
+        read_only_fields = fields
+
+    def get_full_name(self, obj):
+        # falls back to concatenating first/last if get_full_name not defined
+        try:
+            name = obj.get_full_name()
+        except Exception:
+            name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
+        return name

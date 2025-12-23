@@ -9,6 +9,7 @@ interface Notification {
   id: number;
   time_request_id?: number | null;
   task_id?: number | null;
+  shift_id?: number | null;
   verb: string;
   created_at: string;
   is_read: boolean;
@@ -68,6 +69,7 @@ export default function NotificationDropdown() {
     }
   }, [token]);
 
+  // ---------- UPDATED fetchNotifications: now merges regular + shift notifications ----------
   const fetchNotifications = useCallback(async () => {
     if (!token) {
       setNotifications([]);
@@ -90,27 +92,78 @@ export default function NotificationDropdown() {
     setError(null);
 
     try {
-      const url = `${API_BASE}/notifications/`;
-      const raw = await safeFetchJson(url, controller);
-      if (!raw) {
-        setNotifications([]);
-        setRequestsMap({});
-        setTasksMap({});
-        return;
-      }
+      // Fetch the main notifications endpoint and the shifts-notifications endpoint in parallel
+      const [mainRaw, shiftRaw] = await Promise.all([
+        safeFetchJson(`${API_BASE}/notifications/`, controller),
+        safeFetchJson(`${API_BASE}/shifts/notifications/`, controller),
+      ]);
 
-      let data: Notification[] = [];
-      if (Array.isArray(raw)) data = raw;
-      else if (raw && Array.isArray((raw as any).results)) data = (raw as any).results;
-      else if (raw && Array.isArray(raw.notifications)) data = (raw as any).notifications;
-      else data = [];
+      // Helper to pull array from various response shapes
+      const extractArray = (raw: any) => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        if (raw && Array.isArray(raw.results)) return raw.results;
+        if (raw && Array.isArray(raw.notifications)) return raw.notifications;
+        return [];
+      };
 
-      data = data.slice().sort((a, b) => (new Date(b.created_at).getTime()) - (new Date(a.created_at).getTime()));
+      const mainList: any[] = extractArray(mainRaw);
+      const shiftList: any[] = extractArray(shiftRaw);
 
-      setNotifications(data);
+      // Normalizer: convert different backend shapes into our Notification interface
+      const normalize = (item: any): Notification | null => {
+        if (!item) return null;
 
-      const timeRequestIds: number[] = Array.from(new Set(data.map((n) => n.time_request_id).filter(Boolean))) as number[];
-      const taskIds: number[] = Array.from(new Set(data.map((n) => n.task_id).filter(Boolean))) as number[];
+        // verb/message/title fallback
+        const verb = item.verb ?? item.message ?? item.title ?? (item.shift?.name ? `Shift: ${item.shift.name}` : "");
+
+        // created_at fallback
+        const created_at = item.created_at ?? item.created ?? item.timestamp ?? item.createdOn ?? null;
+        if (!created_at) return null;
+
+        // id fallback
+        // prefer numeric id; if shift notifications use a different field, try shift_notification_id or pk
+        let idVal: number | undefined;
+        if (typeof item.id === "number") idVal = item.id;
+        else if (typeof item.pk === "number") idVal = item.pk;
+        else if (typeof item.shift_notification_id === "number") idVal = item.shift_notification_id;
+        else if (item.id && !isNaN(Number(item.id))) idVal = Number(item.id);
+
+        if (idVal === undefined) {
+          // can't normalize without a stable id; skip it
+          return null;
+        }
+
+        const notif: Notification = {
+          id: idVal,
+          verb,
+          created_at,
+          is_read: !!item.is_read,
+          shift_id: item.shift?.id ?? item.shift_id ?? item.shiftId ?? null,
+          time_request_id: item.time_request_id ?? item.time_request ?? null,
+          task_id: item.task_id ?? item.task ?? null,
+        };
+        return notif;
+      };
+
+      const normalizedMain = mainList.map(normalize).filter(Boolean) as Notification[];
+      const normalizedShift = shiftList.map(normalize).filter(Boolean) as Notification[];
+
+      // Merge and dedupe by id. Insert shift items first so main notifications override if same id.
+      const mapById = new Map<number, Notification>();
+      for (const it of normalizedShift) mapById.set(it.id, it);
+      for (const it of normalizedMain) mapById.set(it.id, it);
+
+      const merged = Array.from(mapById.values());
+
+      // sort newest-first
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setNotifications(merged);
+
+      // fetch related resources as before
+      const timeRequestIds: number[] = Array.from(new Set(merged.map((n) => n.time_request_id).filter(Boolean))) as number[];
+      const taskIds: number[] = Array.from(new Set(merged.map((n) => n.task_id).filter(Boolean))) as number[];
 
       const fetchList = async <T,>(ids: number[], basePath: string): Promise<Record<number, T>> => {
         const map: Record<number, T> = {};
@@ -138,10 +191,15 @@ export default function NotificationDropdown() {
       }
       console.error("Failed loading notifications", err);
       setError(err?.message ?? "Failed loading notifications");
+      // fallback to empty lists if error
+      setNotifications([]);
+      setRequestsMap({});
+      setTasksMap({});
     } finally {
       setLoading(false);
     }
   }, [safeFetchJson, token]);
+  // ---------- END UPDATED fetchNotifications ----------
 
   const handleToggle = (isOpen: boolean) => {
     if (!isOpen) return;

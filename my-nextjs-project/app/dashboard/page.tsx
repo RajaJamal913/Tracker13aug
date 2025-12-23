@@ -1,8 +1,8 @@
+// app/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import Image from "next/image";
 import { Modal, Form } from "react-bootstrap";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
@@ -186,11 +186,32 @@ function RoleSelectorModal({
   );
 }
 
+/* --------------------------- Utilities for grouping & initials --------------------------- */
+type TaskItem = {
+  id?: number;
+  title?: string;
+  due_date?: string | null;
+  status?: string;
+  [k: string]: any;
+};
+
+function initialsFromName(name?: string | null) {
+  if (!name) return "NA";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 /* --------------------------- Main page component --------------------------- */
 export default function Home() {
   const [username, setUsername] = useState<string>("Loading…");
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [assignerGroups, setAssignerGroups] = useState<{ id: number | null; name: string; count: number; tasks: TaskItem[] }[]>([]);
+  const [assignersLoading, setAssignersLoading] = useState<boolean>(false);
+  const [overdueCount, setOverdueCount] = useState<number>(0);
+  const [outstandingCount, setOutstandingCount] = useState<number>(0);
+  const [approvedCount, setApprovedCount] = useState<number | null>(null); // <--- NEW state
   const router = useRouter();
 
   useEffect(() => {
@@ -315,6 +336,223 @@ export default function Home() {
     return () => ac.abort();
   }, [router]);
 
+  /* --------------------------- NEW: fetch approved time-requests count --------------------------- */
+  useEffect(() => {
+    const ac = new AbortController();
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    const fetchApprovedCount = async () => {
+      setApprovedCount(null); // show loading
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Token ${token}`;
+
+        const res = await fetch(`${API_BASE}/api/time-requests/?status=APPROVED`, {
+          method: "GET",
+          headers,
+          signal: ac.signal,
+        });
+
+        if (!res.ok) {
+          // If unauthorized, optionally redirect or set 0
+          if (res.status === 401) {
+            // not redirecting here; leave as 0 and let auth flow handle redirect elsewhere
+            setApprovedCount(0);
+            return;
+          }
+          console.warn("[TimeRequests] fetch failed:", res.status);
+          setApprovedCount(0);
+          return;
+        }
+
+        const body = await res.json();
+        const list = Array.isArray(body) ? body : body.results ?? [];
+        // defensive: ensure only APPROVED counted
+        const count = list.filter((r: any) => (r.status ?? "").toString().toUpperCase() === "APPROVED").length;
+        setApprovedCount(count);
+      } catch (err: any) {
+        if (err?.name === "AbortError") return;
+        console.error("[TimeRequests] error fetching approved count:", err);
+        setApprovedCount(0);
+      }
+    };
+
+    // Only attempt fetch if token exists; otherwise set 0 (or null to indicate not checked)
+    if (token) {
+      void fetchApprovedCount();
+    } else {
+      setApprovedCount(0);
+    }
+
+    return () => ac.abort();
+  }, []);
+
+  /* --------------------------- NEW: fetch tasks & robust grouping by assigner --------------------------- */
+  useEffect(() => {
+    const ac = new AbortController();
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) {
+      // nothing to do until token available
+      return () => ac.abort();
+    }
+
+    const fetchMyTasks = async () => {
+      setAssignersLoading(true);
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Token ${token}`;
+
+        const res = await fetch(`${API_BASE}/api/tasks/my/`, { method: "GET", headers, signal: ac.signal });
+        if (!res.ok) {
+          if (res.status === 401) {
+            router.push(LOGIN_ROUTE);
+            return;
+          }
+          console.warn("[Tasks] fetch failed", res.status);
+          setAssignerGroups([]);
+          setOverdueCount(0);
+          setOutstandingCount(0);
+          return;
+        }
+        const tasks: TaskItem[] = await res.json();
+
+        // DEBUG: inspect shape returned by API so you can adapt server -> client mapping if needed
+        console.debug("[Tasks] raw tasks response sample:", tasks && tasks[0]);
+
+        // compute overdue & outstanding counts
+        // Consider a task "overdue" when the due_date exists and is strictly before today (local),
+        // and task is not closed (not DONE/CLOSED).
+        // Consider a task "outstanding" when due_date exists and is today or in future and task is not closed.
+        const closedStatuses = new Set(["DONE", "CLOSED", "Completed".toUpperCase()]);
+        let overdue = 0;
+        let outstanding = 0;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // local day boundary
+
+        for (const t of tasks) {
+          const dueRaw = (t as any).due_date ?? null;
+          const statusRaw = ((t as any).status ?? "").toString().toUpperCase();
+
+          if (!dueRaw) continue; // we only count tasks that have a due date per your request
+
+          // parse date portion; new Date() handles ISO strings; set time to midnight for comparison
+          const due = new Date(dueRaw);
+          if (Number.isNaN(due.getTime())) continue;
+          due.setHours(0, 0, 0, 0);
+
+          if (!closedStatuses.has(statusRaw)) {
+            if (due < today) {
+              overdue += 1;
+            } else {
+              // due >= today and not closed
+              outstanding += 1;
+            }
+          }
+        }
+
+        setOverdueCount(overdue);
+        setOutstandingCount(outstanding);
+
+        // Group by assigner. key is either numeric id or a name-based key when id missing.
+        const map = new Map<string, { id: number | null; name: string; count: number; tasks: TaskItem[] }>();
+
+        const getNameFromUserObject = (u: any) => {
+          if (!u) return null;
+          const first = u.first_name ?? u.firstName ?? null;
+          const last = u.last_name ?? u.lastName ?? null;
+          if (first || last) return `${first ?? ""} ${last ?? ""}`.trim();
+          return u.username ?? u.email ?? u.name ?? null;
+        };
+
+        for (const t of tasks) {
+          // many possible shapes:
+          // - t.assigned_by (number)
+          // - t.assigned_by (object with id / user nested)
+          // - t.assigned_by_name (friendly)
+          // - t.created_by / t.creator (legacy)
+          let keyId: number | null = null;
+          let keyName: string | null = null;
+
+          // assigned_by as primitive id or nested member object
+          const assignedBy = (t as any).assigned_by ?? null;
+          if (assignedBy) {
+            if (typeof assignedBy === "number") {
+              keyId = Number(assignedBy) || null;
+            } else if (typeof assignedBy === "object") {
+              keyId = assignedBy.id ?? assignedBy.pk ?? keyId;
+              // attempt to get nested user name
+              keyName = (t as any).assigned_by_name ??
+                        assignedBy.name ??
+                        getNameFromUserObject(assignedBy.user) ??
+                        assignedBy.username ??
+                        assignedBy.display_name ??
+                        keyName;
+            }
+          }
+
+          // explicit assigned_by_name from serializer
+          if (!keyName) {
+            keyName = (t as any).assigned_by_name ?? (t as any).assignedByName ?? null;
+          }
+
+          // fallback to created_by / creator fields (legacy tasks)
+          if (!keyId && !keyName) {
+            const c = (t as any).created_by ?? (t as any).creator ?? (t as any).createdBy ?? null;
+            if (c) {
+              if (typeof c === "number") {
+                keyId = Number(c) || null;
+              } else if (typeof c === "object") {
+                keyId = c.id ?? c.pk ?? keyId;
+                keyName = getNameFromUserObject(c.user) ?? c.username ?? c.email ?? c.name ?? keyName;
+              }
+            }
+            if (!keyName) keyName = (t as any).created_by_name ?? (t as any).creator_name ?? null;
+          }
+
+          // As last attempt, try nested shapes like assigned_by__user__first_name etc
+          if (!keyName) {
+            const first = (t as any)["assigned_by__user__first_name"] ?? (t as any)["assigned_by__user__firstName"] ?? null;
+            const last = (t as any)["assigned_by__user__last_name"] ?? (t as any)["assigned_by__user__lastName"] ?? null;
+            if (first || last) keyName = `${first ?? ""} ${last ?? ""}`.trim();
+          }
+
+          if (!keyName && !keyId) {
+            keyName = "Unrecorded";
+            keyId = null;
+          }
+
+          const mapKey = keyId !== null ? `id:${keyId}` : `name:${keyName}`;
+
+          if (!map.has(mapKey)) {
+            map.set(mapKey, { id: keyId, name: keyName ?? "Unknown", count: 0, tasks: [] });
+          }
+          const entry = map.get(mapKey)!;
+          entry.tasks.push(t);
+          entry.count = entry.tasks.length;
+        }
+
+        const groups = Array.from(map.values()).sort((a, b) => b.count - a.count);
+        setAssignerGroups(groups);
+      } catch (err) {
+        if ((err as any)?.name === "AbortError") {
+          // ignore
+        } else {
+          console.error("[Tasks] error fetching tasks:", err);
+          setAssignerGroups([]);
+          setOverdueCount(0);
+          setOutstandingCount(0);
+        }
+      } finally {
+        setAssignersLoading(false);
+      }
+    };
+
+    fetchMyTasks();
+
+    return () => ac.abort();
+  }, [router]);
+
   // Handler when user confirms role in modal
   const handleRoleConfirm = (role: string, details?: { experience?: string; skills?: string; developerType?: string }) => {
     // store for this session only (ask every login): use sessionStorage
@@ -404,7 +642,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Code Reviews Card */}
+            {/* Top three small cards */}
             <div className="col-lg-4">
               <div className="card border-0">
                 <div className="card-body">
@@ -418,7 +656,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Daily Standups Card */}
             <div className="col-lg-4">
               <div className="card border-0">
                 <div className="card-body">
@@ -432,7 +669,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Sprint Duration Card */}
             <div className="col-lg-4">
               <div className="card border-0">
                 <div className="card-body">
@@ -449,19 +685,18 @@ export default function Home() {
 
           {/* First Row */}
           <div className="row mb-4 g-4">
-            {/* Tasks by Assignee */}
+            {/* Tasks by Assignee (now dynamic by assigner) */}
             <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 task-by-assignee rounded-13">
                 <div className="card-body">
                   <div className="d-flex align-items-center mb-3">
                     <div className="me-2" style={{ width: "20px", height: "20px" }}>
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M17.25 15.7502V14.2502C17.2495 13.5855 17.0283 12.9397 16.621 12.4144C16.2138 11.889 15.6436 11.5138 15 11.3477" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M12.75 15.75V14.25C12.75 13.4544 12.4339 12.6913 11.8713 12.1287C11.3087 11.5661 10.5457 11.25 9.75 11.25H3.75C2.95435 11.25 2.19129 11.5661 1.62868 12.1287C1.06607 12.6913 0.75 13.4544 0.75 14.25V15.75" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M12 2.34766C12.6453 2.51288 13.2173 2.88818 13.6257 3.41439C14.0342 3.9406 14.2559 4.58778 14.2559 5.25391C14.2559 5.92003 14.0342 6.56722 13.6257 7.09342C13.2173 7.61963 12.6453 7.99493 12 8.16016" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M6.75 8.25C8.40685 8.25 9.75 6.90685 9.75 5.25C9.75 3.59315 8.40685 2.25 6.75 2.25C5.09315 2.25 3.75 3.59315 3.75 5.25C3.75 6.90685 5.09315 8.25 6.75 8.25Z" stroke="#3F3F46" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.25 15.7502V14.2502C17.2495 13.5855 17.0283 12.9397 16.621 12.4144C16.2138 11.889 15.6436 11.5138 15 11.3477" stroke="#3F3F46" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12.75 15.75V14.25C12.75 13.4544 12.4339 12.6913 11.8713 12.1287C11.3087 11.5661 10.5457 11.25 9.75 11.25H3.75C2.95435 11.25 2.19129 11.5661 1.62868 12.1287C1.06607 12.6913 0.75 13.4544 0.75 14.25V15.75" stroke="#3F3F46" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 2.34766C12.6453 2.51288 13.2173 2.88818 13.6257 3.41439C14.0342 3.9406 14.2559 4.58778 14.2559 5.25391C14.2559 5.92003 14.0342 6.56722 13.6257 7.09342C13.2173 7.61963 12.6453 7.99493 12 8.16016" stroke="#3F3F46" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M6.75 8.25C8.40685 8.25 9.75 6.90685 9.75 5.25C9.75 3.59315 8.40685 2.25 6.75 2.25C5.09315 2.25 3.75 3.59315 3.75 5.25C3.75 6.90685 5.09315 8.25 6.75 8.25Z" stroke="#3F3F46" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                     </div>
                     <h6 className="card-title mb-0 text-secondary" style={{ fontSize: "14px" }}>
                       Tasks by Assignee
@@ -469,53 +704,45 @@ export default function Home() {
                   </div>
 
                   <div className="mt-4">
-                    <div className="mb-3">
-                      <div className="d-flex align-items-center">
-                        <div className="rounded-circle me-2 assignee-round">SC</div>
-                        <span className="flex-grow-1" style={{ fontSize: "14px" }}>
-                          Sarah Chan
-                        </span>
-                        <span className="num text-secondary" style={{ fontSize: "12px" }}>
-                          8/12
-                        </span>
+                    {assignersLoading ? (
+                      <div className="text-center py-4">
+                        <div className="spinner-border" role="status" aria-hidden="true"></div>
                       </div>
-                    </div>
-
-                    <div className="mb-3">
-                      <div className="d-flex align-items-center">
-                        <div className=" rounded-circle me-2 assignee-round">MJ</div>
-                        <span className="flex-grow-1" style={{ fontSize: "14px" }}>
-                          Mike Johnson
-                        </span>
-                        <span className="num text-secondary" style={{ fontSize: "12px" }}>
-                          11/15
-                        </span>
+                    ) : assignerGroups.length === 0 ? (
+                      <div className="text-center py-4">
+                        <p className="mb-0 text-secondary">No task assigned to you by assignee</p>
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        {assignerGroups.slice(0, 5).map((g) => (
+                          <div className="mb-3" key={`${g.id ?? "null"}-${g.name}`}>
+                            <div className="d-flex align-items-center">
+                              <div className="rounded-circle me-2 assignee-round" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600 }}>
+                                {initialsFromName(g.name)}
+                              </div>
+                              <span className="flex-grow-1" style={{ fontSize: "14px" }}>
+                                {g.name}
+                              </span>
+                              <span className="num text-secondary" style={{ fontSize: "12px" }}>
+                                {g.count} task{g.count > 1 ? "s" : ""}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
 
-                    <div className="mb-3">
-                      <div className="d-flex align-items-center">
-                        <div className=" rounded-circle me-2 assignee-round">ED</div>
-                        <span className="flex-grow-1" style={{ fontSize: "14px" }}>
-                          Emily Davis
-                        </span>
-                        <span className="num text-secondary" style={{ fontSize: "12px" }}>
-                          7/9
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-2 border-top">
-                      <a href="#" className="text-decoration-none text-secondary" style={{ fontSize: "13px" }}>
-                        View all assignees →
-                      </a>
-                    </div>
+                        <div className="mt-4 pt-2 border-top">
+                          <a href="dashboard/MyTask" className="text-decoration-none text-secondary" style={{ fontSize: "13px" }}>
+                            View all assignees →
+                          </a>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Overdue Tasks */}
+            {/* Overdue Tasks (dynamic) */}
             <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 overdue-task rounded-13">
                 <div className="card-body">
@@ -529,16 +756,16 @@ export default function Home() {
                     <h6 className="card-title mb-0 ms-2">Overdue Tasks</h6>
                   </div>
 
-                  <h2 className="fw-bold mb-2">8</h2>
+                  <h2 className="fw-bold mb-2">{overdueCount}</h2>
                   <p className="mb-3" style={{ fontSize: "14px" }}>
                     Require immediate attention
                   </p>
-                  <button className="btn btn-sm w-100">View Details</button>
+                  <button className="btn btn-sm w-100" onClick={() => router.push("/dashboard/MyTask")}>View Details</button>
                 </div>
               </div>
             </div>
 
-            {/* No Time Estimate */}
+            {/* No Time Estimate (DYNAMIC approved count shown here) */}
             <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 no-time-estimate rounded-13">
                 <div className="card-body">
@@ -554,18 +781,26 @@ export default function Home() {
                     </h6>
                   </div>
 
-                  <h2 className=" fw-bold mb-2">14</h2>
+                  <h2 className=" fw-bold mb-2">
+                    {approvedCount === null ? (
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    ) : (
+                      approvedCount
+                    )}
+                  </h2>
                   <p className=" mb-3" style={{ fontSize: "14px" }}>
                     Tasks need estimation
                   </p>
-                  <button className="btn btn-outline-warning btn-sm w-100" style={{ fontSize: "13px" }}>
+                  <button type="button" className="btn btn-outline-warning btn-sm w-100" style={{ fontSize: "13px" }}
+                   onClick={() => router.push("/dashboard/time-estimate")}>
                     Add Estimates
                   </button>
+                  
                 </div>
               </div>
             </div>
 
-            {/* Tasks Outstanding */}
+            {/* Tasks Outstanding (dynamic) */}
             <div className="col-lg-3 col-md-4 col-sm-6">
               <div className="card h-100 task-outstanding rounded-13">
                 <div className="card-body">
@@ -581,11 +816,11 @@ export default function Home() {
                     </h6>
                   </div>
 
-                  <h2 className=" fw-bold mb-2">32</h2>
+                  <h2 className=" fw-bold mb-2">{outstandingCount}</h2>
                   <p className=" mb-3" style={{ fontSize: "14px" }}>
-                    In progress or pending
+                    In progress or pending with due date
                   </p>
-                  <button className="btn btn-outline-danger btn-sm w-100" style={{ fontSize: "13px", borderRadius: "6px" }}>
+                  <button className="btn btn-outline-danger btn-sm w-100" style={{ fontSize: "13px", borderRadius: "6px" }} onClick={() => router.push("dashboard/MyTask")}>
                     Manage Tasks
                   </button>
                 </div>
@@ -593,7 +828,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Second Row */}
+          {/* Second Row (charts/cards) — unchanged visuals */}
           <div className="row mb-4 g-4">
             {/* Completed This Week */}
             <div className="col-lg-4 col-md-4 col-sm-6">
@@ -602,7 +837,7 @@ export default function Home() {
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
                       <svg width="17" height="16" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M1.7 13.4737V1.68421V11.2421V9.45263V13.4737ZM1.7 15.1579C1.2325 15.1579 0.832292 14.993 0.499375 14.6632C0.166458 14.3333 0 13.9368 0 13.4737V1.68421C0 1.22105 0.166458 0.824561 0.499375 0.494737C0.832292 0.164912 1.2325 0 1.7 0H13.6C14.0675 0 14.4677 0.164912 14.8006 0.494737C15.1335 0.824561 15.3 1.22105 15.3 1.68421V8.42105H13.6V1.68421H1.7V13.4737H7.65V15.1579H1.7ZM12.1975 16L9.18 13.0105L10.3913 11.8316L12.1975 13.6211L15.81 10.0421L17 11.2421L12.1975 16ZM4.25 8.42105C4.49083 8.42105 4.69271 8.34035 4.85563 8.17895C5.01854 8.01754 5.1 7.81754 5.1 7.57895C5.1 7.34035 5.01854 7.14035 4.85563 6.97895C4.69271 6.81754 4.49083 6.73684 4.25 6.73684C4.00917 6.73684 3.80729 6.81754 3.64438 6.97895C3.48146 7.14035 3.4 7.34035 3.4 7.57895C3.4 7.81754 3.48146 8.01754 3.64438 8.17895C3.80729 8.34035 4.00917 8.42105 4.25 8.42105ZM4.25 5.05263C4.49083 5.05263 4.69271 4.97193 4.85563 4.81053C5.01854 4.64912 5.1 4.44912 5.1 4.21053C5.1 3.97193 5.01854 3.77193 4.85563 3.61053C4.69271 3.44912 4.49083 3.36842 4.25 3.36842C4.00917 3.36842 3.80729 3.44912 3.64438 3.61053C3.48146 3.77193 3.4 3.97193 3.4 4.21053C3.4 4.44912 3.48146 4.64912 3.64438 4.81053C3.80729 4.97193 4.00917 5.05263 4.25 5.05263ZM6.8 8.42105H11.9V6.73684H6.8V8.42105ZM6.8 5.05263H11.9V3.36842H6.8V5.05263Z" fill="#00A63D"/>
+<path d="M1.7 13.4737V1.68421V11.2421V9.45263V13.4737ZM1.7 15.1579C1.2325 15.1579 0.832292 14.993 0.499375 14.6632C0.166458 14.3333 0 13.9368 0 13.4737V1.68421C0 1.22105 0.166458 0.824561 0.499375 0.494737C0.832292 0.164912 1.2325 0 1.7 0H13.6C14.0675 0 14.4677 0.164912 14.8006 0.494737C15.1335 0.824561 15.3 1.22105 15.3 1.68421V8.42105H13.6V1.68421H1.7V13.4737H7.65V15.1579H1.7ZM12.1975 16L9.18 13.0105L10.3913 11.8316L12.1975 13.6211L15.81 10.0421L17 11.2421L12.1975 16ZM4.25 8.42105C4.49083 8.42105 4.69271 8.34035 4.85563 8.17895C5.01854 8.01754 5.1 7.81754 5.1 7.57895C5.1 7.34035 5.01854 7.14035 4.85563 6.97895C4.69271 6.81754 4.49083 6.73684 4.25 6.73684C4.00917 6.73684 3.80729 6.81754 3.64438 6.97895C3.48146 7.14035 3.4 7.34035 3.4 7.57895C3.4 7.81754 3.48146 8.01754 3.64438 8.17895C3.80729 8.34035 4.00917 8.42105 4.25 8.42105ZM4.25 5.05263C4.49083 5.05263 4.69271 4.97193 4.85563 4.81053C5.01854 4.64912 5.1 4.44912 5.1 4.21053C5.1 3.97193 5.01854 3.77193 4.85563 3.61053C4.69271 3.44912 4.49083 3.36842 4.25 3.36842C4.00917 3.36842 3.80729 3.44912 3.64438 3.61053C3.48146 3.77193 3.4 3.97193 3.4 4.21053C3.4 4.44912 3.48146 4.64912 3.64438 4.81053C3.80729 4.97193 4.00917 5.05263 4.25 5.05263Z" fill="#00A63D"/>
 </svg>
 
                     </div>
@@ -628,7 +863,7 @@ export default function Home() {
                   <div className="d-flex align-items-center mb-3">
                     <div className="" style={{ fontSize: "20px" }}>
                      <svg width="12" height="15" viewBox="0 0 12 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M4.01979 8.2875L4.63958 6.26875L3.01042 4.95833H5.02917L5.66667 2.975L6.30417 4.95833H8.32292L6.67604 6.26875L7.29583 8.2875L5.66667 7.03021L4.01979 8.2875ZM1.41667 14.875V9.40312C0.968055 8.90729 0.619792 8.34062 0.371875 7.70312C0.123958 7.06562 0 6.38681 0 5.66667C0 4.08472 0.548958 2.74479 1.64688 1.64688C2.74479 0.548958 4.08472 0 5.66667 0C7.24861 0 8.58854 0.548958 9.68646 1.64688C10.7844 2.74479 11.3333 4.08472 11.3333 5.66667C11.3333 6.38681 11.2094 7.06562 10.9615 7.70312C10.7135 8.34062 10.3653 8.90729 9.91667 9.40312V14.875L5.66667 13.4583L1.41667 14.875ZM5.66667 9.91667C6.84722 9.91667 7.85069 9.50347 8.67708 8.67708C9.50347 7.85069 9.91667 6.84722 9.91667 5.66667C9.91667 4.48611 9.50347 3.48264 8.67708 2.65625C7.85069 1.82986 6.84722 1.41667 5.66667 1.41667C4.48611 1.41667 3.48264 1.82986 2.65625 2.65625C1.82986 3.48264 1.41667 4.48611 1.41667 5.66667C1.41667 6.84722 1.82986 7.85069 2.65625 8.67708C3.48264 9.50347 4.48611 9.91667 5.66667 9.91667ZM2.83333 12.7677L5.66667 12.0417L8.5 12.7677V10.5719C8.08681 10.808 7.64115 10.9939 7.16302 11.1297C6.6849 11.2655 6.18611 11.3333 5.66667 11.3333C5.14722 11.3333 4.64844 11.2655 4.17031 11.1297C3.69219 10.9939 3.24653 10.808 2.83333 10.5719V12.7677Z" fill="#8B14DC"/>
+<path d="M4.01979 8.2875L4.63958 6.26875L3.01042 4.95833H5.02917L5.66667 2.975L6.30417 4.95833H8.32292L6.67604 6.26875L7.29583 8.2875L5.66667 7.03021L4.01979 8.2875ZM1.41667 14.875V9.40312C0.968055 8.90729 0.619792 8.34062 0.371875 7.70312C0.123958 7.06562 0 6.38681 0 5.66667C0 4.08472 0.548958 2.74479 1.64688 1.64688C2.74479 0.548958 4.08472 0 5.66667 0C7.24861 0 8.58854 0.548958 9.68646 1.64688C10.7844 2.74479 11.3333 4.08472 11.3333 5.66667C11.3333 6.38681 11.2094 7.06562 10.9615 7.70312C10.7135 8.34062 10.3653 8.90729 9.91667 9.40312V14.875L5.66667 13.4583L1.41667 14.875ZM5.66667 9.91667C6.84722 9.91667 7.85069 9.50347 8.67708 8.67708C9.50347 7.85069 9.91667 6.84722 9.91667 5.66667C9.91667 4.48611 9.50347 3.48264 8.67708 2.65625C7.85069 1.82986 6.84722 1.41667 5.66667 1.41667C4.48611 1.41667 3.48264 1.82986 2.65625 2.65625C1.82986 3.48264 1.41667 4.48611 1.41667 5.66667C1.41667 6.84722 1.82986 7.85069 2.65625 8.67708C3.48264 9.50347 4.48611 9.91667 5.66667 9.91667C5.14725 9.91667 4.64844 9.848 4.17031 9.71217C3.69218 9.57634 3.24653 9.39042 2.83333 9.15426V11.35L5.66667 12.076L8.5 11.35V9.15426C8.08681 9.39042 7.64115 9.57634 7.16302 9.71217C6.6849 9.848 6.18611 9.91667 5.66667 9.91667Z" fill="#8B14DC"/>
 </svg>
 
                     </div>
@@ -675,7 +910,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Third Row - Charts */}
+          {/* Third Row - Charts */} 
+          {/* ... rest of unchanged content remains as it was ... */ }
           <div className="row g-4 mb-4">
             {/* Time Reporting Chart */}
             <div className="col-lg-6">
@@ -732,24 +968,23 @@ export default function Home() {
           <div className="row mb-4">
             <div className="col-12">
               <div className="card g-borde rounded-13">
-              <div className="card-body">
-                <h5 className="card-title mb-4">Status over time</h5>
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={statusData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                    <XAxis dataKey="month" stroke="#666" />
-                    <YAxis domain={[0, 100]} stroke="#666" />
-                    <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "4px" }} />
-                    <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                    <Line type="monotone" dataKey="completed" stroke="#22c55e" name="Completed" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="inProgress" stroke="#3b82f6" name="In-Progress" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="pending" stroke="#eab308" name="Pending" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <div className="card-body">
+                  <h5 className="card-title mb-4">Status over time</h5>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <LineChart data={statusData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis dataKey="month" stroke="#666" />
+                      <YAxis domain={[0, 100]} stroke="#666" />
+                      <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "4px" }} />
+                      <Legend wrapperStyle={{ paddingTop: "20px" }} />
+                      <Line type="monotone" dataKey="completed" stroke="#22c55e" name="Completed" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="inProgress" stroke="#3b82f6" name="In-Progress" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="pending" stroke="#eab308" name="Pending" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
-            </div>
-            
           </div>
         </div>
       </main>

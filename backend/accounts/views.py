@@ -319,3 +319,19 @@ class PasswordResetConfirmView(APIView):
         otp.save(update_fields=["reset_token", "used"])
 
         return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
+# accounts/views.py  (append near other APIViews)
+
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .serializers import CurrentUserSerializer
+
+class CurrentUserView(APIView):
+    """
+    GET /api/users/me/  -> returns authenticated user's id, username, email, full_name, ...
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = CurrentUserSerializer(request.user)
+        return Response(serializer.data)

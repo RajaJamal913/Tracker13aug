@@ -1,0 +1,47 @@
+ .moreBtn>svg {
+    width: 11px;
+    height: auto;
+} 
+
+
+.panel {
+    width: 320px;
+    padding: 15px;
+    border-radius: 12px;
+}
+
+.menuItem {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.menuItem:hover {
+    background: #eef2ff;
+    transform: translateY(-2px);
+}
+
+.icon {
+    font-size: 22px;
+    color: #4f46e5;
+}
+
+.menuItem span {
+    font-size: 13px;
+    font-weight: 500;
+}
+.p-overlaypanel-content {
+    padding: 0px !important;
+}
+.p-overlaypanel-content .pi {
+    font-size: 14px !important;
+}
+
+
+
+.p-overlaypanel-content span {display: none;}

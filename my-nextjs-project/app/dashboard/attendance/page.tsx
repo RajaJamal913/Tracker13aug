@@ -1,12 +1,13 @@
 'use client';
+
 import React, { useState, useEffect } from 'react';
 import {
-  Table,
   Modal,
   Button,
   Form,
   Spinner,
   Alert,
+  Badge,
 } from 'react-bootstrap';
 import 'primereact/resources/themes/saga-blue/theme.css';
 import 'primereact/resources/primereact.min.css';
@@ -14,7 +15,7 @@ import 'primeicons/primeicons.css';
 import { MultiSelect } from 'primereact/multiselect';
 import dayjs from 'dayjs';
 
-// Base URL for API
+// Base URL for API (ensure this includes /api if your backend needs it)
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function AttendancePage() {
@@ -22,10 +23,19 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<'daily' | 'shifts'>('daily');
 
   // Data
-  const [dailyData, setDailyData] = useState<{ member: string; total: string }[]>([]);
+  const [dailyData, setDailyData] = useState<any[]>([]);
   const [dailyShifts, setDailyShifts] = useState<any[]>([]);
   const [shiftsData, setShiftsData] = useState<any[]>([]);
+  const [assignedShifts, setAssignedShifts] = useState<any[]>([]);
   const [membersList, setMembersList] = useState<{ label: string; value: number }[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  // Attendance data
+  const [attendanceList, setAttendanceList] = useState<any[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, any>>({}); // key: `${shiftId}|${memberUsername}`
+
+  // current user info (used to decide if current user is creator)
+  const [currentUser, setCurrentUser] = useState<{ id?: number; username?: string; email?: string; fullName?: string } | null>(null);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -35,7 +45,16 @@ export default function AttendancePage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  // Form state
+  // Notifications modal
+  const [showNotifModal, setShowNotifModal] = useState(false);
+
+  // Delete confirmation state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteShiftId, setDeleteShiftId] = useState<number | null>(null);
+  const [deleteShiftName, setDeleteShiftName] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Form state for create/edit
   const [form, setForm] = useState({
     id: null as number | null,
     name: '',
@@ -51,12 +70,6 @@ export default function AttendancePage() {
     repeat_until: '',
   });
 
-  // Delete confirmation state
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteShiftId, setDeleteShiftId] = useState<number | null>(null);
-  const [deleteShiftName, setDeleteShiftName] = useState('');
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
   // Fix for SSR: Only set appendTo on client
   const [appendTarget, setAppendTarget] = useState<HTMLElement | undefined>(undefined);
   useEffect(() => {
@@ -67,6 +80,25 @@ export default function AttendancePage() {
 
   // Constants
   const TODAY = dayjs().format('YYYY-MM-DD');
+  const GRACE_MINUTES = 15;
+
+  // Format helpers
+  // formatTime: shows times in 12-hour format with AM/PM when possible
+  const formatTime = (timeStr: string | undefined | null) => {
+    if (!timeStr) return '';
+    // if it already contains AM/PM just normalize case
+    if (/[AaPp][Mm]/.test(timeStr)) {
+      return String(timeStr).toUpperCase();
+    }
+    // if it looks like HH:mm or H:mm or includes seconds, attach TODAY for parsing
+    const candidate = dayjs(`${TODAY} ${timeStr}`);
+    if (candidate.isValid()) return candidate.format('h:mm A');
+    // fallback: try parsing timeStr alone
+    const tOnly = dayjs(timeStr);
+    if (tOnly.isValid()) return tOnly.format('h:mm A');
+    // as last resort return the original
+    return String(timeStr);
+  };
 
   const DAY_OPTIONS = [
     { label: 'Mon', value: 'Mon' },
@@ -84,7 +116,7 @@ export default function AttendancePage() {
   const REPEAT_OPTIONS = [
     { label: 'None', value: 'none' },
     { label: 'Weekly', value: 'weekly' },
-    { label: 'Bi‑Weekly', value: 'bi-weekly' },
+    { label: 'Bi-Weekly', value: 'bi-weekly' },
   ];
 
   // Helper to update form
@@ -110,17 +142,99 @@ export default function AttendancePage() {
     });
   };
 
+  // Auth token helper
+  const makeHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    };
+  };
+
+  // fetchCurrentUser: returns {id?, username?} from several endpoints and localStorage fallback
+  const fetchCurrentUser = async () => {
+    const tryPaths = [
+      `${API_BASE}/api/users/me/`,
+      `${API_BASE}/api/whoami/`,
+      `${API_BASE}/api/auth/user/`,
+      `${API_BASE}/api/user/`,
+      `${API_BASE}/api/profile/`,
+      `${API_BASE}/api/accounts/me/`,
+    ];
+    for (const url of tryPaths) {
+      try {
+        const res = await fetch(url, { headers: makeHeaders() });
+        if (!res.ok) continue;
+        const data = await res.json();
+        // attempt to extract id and username from common shapes
+        const id =
+          data?.id ??
+          data?.user?.id ??
+          data?.data?.id ??
+          (typeof data?.pk === 'number' ? data.pk : undefined);
+
+        const usernameRaw =
+          data?.username ??
+          data?.user?.username ??
+          data?.data?.username ??
+          (typeof data?.email === 'string' ? data.email.split('@')[0] : undefined) ??
+          data?.name ??
+          undefined;
+
+        const username = usernameRaw ? String(usernameRaw).trim() : undefined;
+
+        const email =
+          data?.email ??
+          data?.user?.email ??
+          undefined;
+
+        const fullName =
+          data?.full_name ??
+          data?.name ??
+          ((data?.first_name || data?.last_name) ? `${data?.first_name || ''} ${data?.last_name || ''}`.trim() : undefined);
+
+        if (id || username || email) {
+          setCurrentUser({ id, username, email, fullName });
+          // persist lightweight info so UI can use it quickly
+          if (typeof window !== 'undefined') {
+            if (id) localStorage.setItem('user_id', String(id));
+            if (username) localStorage.setItem('username', String(username));
+            if (email) localStorage.setItem('email', String(email));
+            if (fullName) localStorage.setItem('full_name', String(fullName));
+          }
+          return;
+        }
+      } catch (err) {
+        // ignore and continue trying other endpoints
+      }
+    }
+    // fallback to localStorage values if present
+    const lsName = typeof window !== 'undefined' ? localStorage.getItem('username') : null;
+    const lsIdRaw = typeof window !== 'undefined' ? localStorage.getItem('user_id') : null;
+    const lsEmail = typeof window !== 'undefined' ? localStorage.getItem('email') : null;
+    const lsFull = typeof window !== 'undefined' ? localStorage.getItem('full_name') : null;
+    const lsId = lsIdRaw ? Number(lsIdRaw) : undefined;
+    if (lsName || lsId || lsEmail) {
+      setCurrentUser({ id: lsId, username: lsName ?? undefined, email: lsEmail ?? undefined, fullName: lsFull ?? undefined });
+      return;
+    }
+    setCurrentUser(null);
+  };
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
+
   // 1️⃣ Load members
   useEffect(() => {
-    const token = localStorage.getItem('token');
     fetch(`${API_BASE}/api/members/`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` },
+      headers: makeHeaders(),
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
       .then(data => {
         setMembersList(
-          data.map((m: any) => ({
-            label: m.username ?? `${m.first_name} ${m.last_name}`.trim(),
+          (Array.isArray(data) ? data : []).map((m: any) => ({
+            label: m.username ?? (`${m.first_name || ''} ${m.last_name || ''}`.trim() || `#${m.id}`),
             value: m.id,
           }))
         );
@@ -128,58 +242,160 @@ export default function AttendancePage() {
       .catch(err => console.error('Members fetch error:', err));
   }, []);
 
-  // 2️⃣ Fetch daily totals + today's shifts when "daily" is active
+  // Fetch assigned shifts for current user (members) — minimal normalization only
+  const fetchAssignedShifts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/shifts/assigned/`, { headers: makeHeaders() });
+      if (!res.ok) {
+        setAssignedShifts([]);
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+
+      // Simple normalization
+      const normalized = list.map((s: any) => {
+        const created_by_username =
+          s.created_by_username ??
+          s.created_by?.username ??
+          (typeof s.created_by === 'string' ? s.created_by : undefined) ??
+          undefined;
+        const created_by_id = s.created_by_id ?? s.created_by?.id ?? s.creator_id ?? undefined;
+        const created_by_display_name = s.created_by_display_name ?? s.created_by?.full_name ?? s.created_by?.name ?? undefined;
+        const created_by_email = s.created_by_email ?? (s.created_by && s.created_by.email) ?? undefined;
+        return { ...s, created_by_username, created_by_id, created_by_display_name, created_by_email };
+      });
+
+      setAssignedShifts(normalized);
+    } catch (err) {
+      console.error('Assigned shifts fetch error:', err);
+      setAssignedShifts([]);
+    }
+  };
+
+  // Fetch notifications for current user's Member record
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/shifts/notifications/`, { headers: makeHeaders() });
+      if (!res.ok) return setNotifications([]);
+      const data = await res.json();
+      setNotifications(Array.isArray(data) ? data : (Array.isArray(data.notifications) ? data.notifications : []));
+    } catch (err) {
+      console.error('Notifications fetch error:', err);
+      setNotifications([]);
+    }
+  };
+
+  // NEW: fetch attendance for a given date (defaults to TODAY)
+  const fetchAttendance = async (date = TODAY) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/attendance/?date=${date}`, { headers: makeHeaders() });
+      if (!res.ok) {
+        setAttendanceList([]);
+        setAttendanceMap({});
+        return;
+      }
+      const data = await res.json(); // expecting array or { attendances: [...] } or { attendances }
+      const arr = Array.isArray(data) ? data : (Array.isArray(data.attendances) ? data.attendances : []);
+      setAttendanceList(arr);
+
+      // build map keyed by `${shiftId}|${memberUsername}`
+      const map: Record<string, any> = {};
+      for (const a of arr) {
+        const shiftId = a.shift ?? a.shift_id ?? (a.shift && a.shift.id) ?? null;
+        const username = a.member_username ?? (a.member && a.member_username) ?? (a.member && a.member.user && a.member.user.username) ?? a.member ?? null;
+        if (shiftId != null && username) {
+          map[`${shiftId}|${username}`] = a;
+        }
+      }
+      setAttendanceMap(map);
+    } catch (err) {
+      console.error('Attendance fetch error:', err);
+      setAttendanceList([]);
+      setAttendanceMap({});
+    }
+  };
+
+  // 2️⃣ Fetch daily totals + today's tracked shifts when "daily" is active
   useEffect(() => {
     if (activeTab !== 'daily') return;
     setLoading(true);
     setError(null);
 
-    const token = localStorage.getItem('token');
-
     const dailyFetch = fetch(`${API_BASE}/api/tracker/?type=hours&range=day`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` },
+      headers: makeHeaders(),
     }).then(r => r.ok ? r.json() : Promise.reject(r.statusText));
 
     const shiftsFetch = fetch(
       `${API_BASE}/api/shifts/tracked/?date=${TODAY}`,
-      { headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` }}
+      { headers: makeHeaders() }
     ).then(r => r.ok ? r.json() : Promise.reject(r.statusText));
 
     Promise.all([dailyFetch, shiftsFetch])
       .then(([dailyJson, shiftsJson]) => {
-        setDailyData(dailyJson);
-        setDailyShifts(shiftsJson);
+        setDailyData(Array.isArray(dailyJson) ? dailyJson : []);
+        setDailyShifts(Array.isArray(shiftsJson) ? shiftsJson : []);
+        // once we have today's shifts, fetch attendance too
+        fetchAttendance(TODAY);
       })
-      .catch(err => setError(err.toString()))
+      .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
+
+    // also refresh assigned shifts & notifications for the user view
+    fetchAssignedShifts();
+    fetchNotifications();
   }, [activeTab]);
 
-  // 3️⃣ Fetch all shifts when "shifts" is active
-  const fetchShifts = () => {
+  // 3️⃣ Fetch all shifts when "shifts" is active (creator view) and assigned shifts
+  const fetchShifts = async () => {
     if (activeTab !== 'shifts') return;
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem('token');
-    fetch(`${API_BASE}/api/shifts/`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Token ${token}` },
-    })
-      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-      .then(setShiftsData)
-      .catch(err => setError(err.toString()))
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch(`${API_BASE}/api/shifts/`, { headers: makeHeaders() });
+      if (!res.ok) {
+        setShiftsData([]);
+        return;
+      }
+      const all = await res.json();
+      const list = Array.isArray(all) ? all : [];
+
+      // Simple normalization
+      const normalized = list.map((m: any) => {
+        const createdByUsername =
+          m.created_by_username ??
+          m.created_by?.username ??
+          (typeof m.created_by === 'string' ? m.created_by : undefined) ??
+          undefined;
+        const createdById = m.created_by_id ?? m.created_by?.id ?? m.creator_id ?? undefined;
+        const createdByDisplay = m.created_by_display_name ?? m.created_by?.full_name ?? m.created_by?.name ?? undefined;
+        const createdByEmail = m.created_by_email ?? (m.created_by && m.created_by.email) ?? undefined;
+        return { ...m, created_by_username: createdByUsername, created_by_id: createdById, created_by_display_name: createdByDisplay, created_by_email: createdByEmail };
+      });
+
+      setShiftsData(normalized);
+    } catch (err: any) {
+      console.error('Shifts fetch error:', err);
+      setError(err?.toString() ?? 'Failed to fetch shifts');
+    } finally {
+      setLoading(false);
+    }
+
+    // always try to fetch assigned shifts (member view)
+    fetchAssignedShifts();
   };
 
   useEffect(() => {
     fetchShifts();
   }, [activeTab]);
 
-  // 4️⃣ Handle Edit Shift
+  // 4️⃣ Handle Edit Shift (prefill modal)
   const handleEditShift = (shift: any) => {
     setModalType('edit');
     setForm({
       id: shift.id,
       name: shift.name,
-      members: shift.member_ids || [],
+      members: Array.isArray(shift.members) ? shift.members : (shift.member_ids || []),
       working_days: Array.isArray(shift.working_days) ? shift.working_days : (shift.working_days || '').split(',').filter(Boolean),
       timezone: shift.timezone || 'Asia/Karachi',
       start_date: shift.start_date || '',
@@ -203,32 +419,33 @@ export default function AttendancePage() {
   // 6️⃣ Confirm Delete Shift
   const confirmDeleteShift = async () => {
     if (!deleteShiftId) return;
-    
+
     setDeleteLoading(true);
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/api/shifts/${deleteShiftId}/`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${token}`,
-        },
+        headers: makeHeaders(),
       });
 
       if (!res.ok) {
         throw new Error('Failed to delete shift');
       }
 
-      // Refresh shifts list
+      // Refresh both creator/all list and assigned list
       fetchShifts();
-      
+      fetchAssignedShifts();
+
+      // also refresh attendance/notifications
+      fetchAttendance(TODAY);
+      fetchNotifications();
+
       // Close modal and reset
       setShowDeleteModal(false);
       setDeleteShiftId(null);
       setDeleteShiftName('');
     } catch (error: any) {
       console.error('Delete error:', error);
-      setError(error.toString());
+      setError(String(error));
     } finally {
       setDeleteLoading(false);
     }
@@ -239,14 +456,13 @@ export default function AttendancePage() {
     setModalLoading(true);
     setModalError(null);
     try {
-      const token = localStorage.getItem('token');
       const payload = {
         ...form,
         working_days: form.working_days.join(','),
         repeat_until: form.repeat_option === 'none' ? null : form.repeat_until,
       };
 
-      const url = modalType === 'create' 
+      const url = modalType === 'create'
         ? `${API_BASE}/api/shifts/`
         : `${API_BASE}/api/shifts/${form.id}/`;
 
@@ -254,10 +470,7 @@ export default function AttendancePage() {
 
       const res = await fetch(url, {
         method,
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Token ${token}` 
-        },
+        headers: makeHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -266,23 +479,19 @@ export default function AttendancePage() {
         throw new Error(errorText || 'Failed to save shift');
       }
 
-      // Refresh shifts list
-      const listRes = await fetch(`${API_BASE}/api/shifts/`, {
-        headers: { 
-          'Content-Type': 'application/json', 
-          Authorization: `Token ${token}` 
-        },
-      });
-      
-      if (listRes.ok) {
-        setShiftsData(await listRes.json());
-      }
+      // Refresh both creator/all list and assigned list (members need to see it)
+      await fetchShifts();
+      await fetchAssignedShifts();
+      await fetchNotifications();
+
+      // refresh attendance because new shift assignment may create notifications/attendance expectations
+      await fetchAttendance(TODAY);
 
       // Reset and close modal
       setShowModal(false);
       resetForm();
     } catch (e: any) {
-      setModalError(e.toString());
+      setModalError(String(e));
     } finally {
       setModalLoading(false);
     }
@@ -295,27 +504,62 @@ export default function AttendancePage() {
     setShowModal(true);
   };
 
-  // Helper function to get status based on shift time
-  const getStatus = (shift: any) => {
+  // Helper to get member attendance status (prefers real attendance if available)
+  const getMemberAttendanceStatus = (shift: any, memberUsername: string) => {
     const now = dayjs();
-    const shiftStartTime = dayjs(`${TODAY} ${shift.start_time}`);
-    const shiftEndTime = dayjs(`${TODAY} ${shift.end_time}`);
-    
-    if (now.isBefore(shiftStartTime)) {
-      return 'Upcoming';
-    } else if (now.isAfter(shiftEndTime)) {
-      return 'Completed';
-    } else {
-      // Check if late (15 minutes grace period)
-      const gracePeriod = shiftStartTime.add(15, 'minute');
-      if (now.isAfter(gracePeriod)) {
-        return 'Late';
-      }
-      return 'On Time';
+    // compute shift start & end (handle overnight)
+    let shiftStart = dayjs(`${TODAY} ${shift.start_time}`);
+    let shiftEnd = dayjs(`${TODAY} ${shift.end_time}`);
+    if (!shift.start_time || !shift.end_time) {
+      shiftStart = dayjs();
+      shiftEnd = dayjs();
+    } else if (shift.end_time <= shift.start_time) {
+      // overnight: end next day
+      shiftEnd = shiftEnd.add(1, 'day');
     }
+
+    const key = `${shift.id}|${memberUsername}`;
+    const attendance = attendanceMap[key];
+
+    if (attendance) {
+      // prefer server status if provided
+      const st = (attendance.status || '').toUpperCase();
+      const lateMins = attendance.late_minutes ?? null;
+      const trackedSeconds = attendance.tracked_seconds ?? null;
+      if (st === 'ON_TIME' || st === 'ON-TIME' || st === 'ONTIME') {
+        return { label: 'On Time', color: 'text-success', lateMinutes: 0, trackedSeconds };
+      }
+      if (st === 'LATE') {
+        return { label: `Late${lateMins ? ` (${lateMins}m)` : ''}`, color: 'text-danger', lateMinutes: lateMins, trackedSeconds };
+      }
+      if (st === 'ABSENT') {
+        return { label: 'Absent', color: 'text-danger', lateMinutes: null, trackedSeconds };
+      }
+      // unknown status fallback
+      return { label: st || 'Present', color: 'text-muted', lateMinutes: lateMins, trackedSeconds };
+    }
+
+    // No attendance recorded yet — infer from current time
+    if (now.isBefore(shiftStart)) {
+      return { label: 'Upcoming', color: 'text-warning', lateMinutes: null, trackedSeconds: null };
+    }
+
+    // within shift window
+    const graceEnd = shiftStart.add(GRACE_MINUTES, 'minute');
+    if (now.isAfter(shiftEnd)) {
+      // Passed shift end and no attendance -> Absent
+      return { label: 'Absent', color: 'text-danger', lateMinutes: null, trackedSeconds: null };
+    }
+
+    if (now.isAfter(graceEnd)) {
+      return { label: 'Late', color: 'text-danger', lateMinutes: Math.max(0, now.diff(shiftStart, 'minute')), trackedSeconds: null };
+    }
+
+    // within grace period: still considered on time if they check-in now
+    return { label: 'On Time', color: 'text-success', lateMinutes: 0, trackedSeconds: null };
   };
 
-  // Helper function to get status color
+  // Helper function to get status color (CSS class)
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'late':
@@ -326,25 +570,33 @@ export default function AttendancePage() {
         return 'text-warning';
       case 'completed':
         return 'text-secondary';
+      case 'absent':
+        return 'text-danger';
       default:
         return 'text-muted';
     }
   };
 
+  // Notifications count (unread)
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  // Render
   return (
     <div className="container-fluid px-sm-0 mt-5">
-      {/* Tabs */}
-      <div className="multi-style tabContainer profile-settings-tabs-wrapper mb-4">
-        <div className="um-btns-wrap d-flex">
-          {(['daily', 'shifts'] as const).map(tab => (
-            <button
-              key={tab}
-              className={`tabButton ${activeTab === tab ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+      {/* Tabs + Notifications */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="multi-style tabContainer profile-settings-tabs-wrapper mb-4">
+          <div className="um-btns-wrap d-flex">
+            {(['daily', 'shifts'] as const).map(tab => (
+              <button
+                key={tab}
+                className={`tabButton ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -359,7 +611,7 @@ export default function AttendancePage() {
           <Alert variant="danger">{error}</Alert>
         ) : activeTab === 'daily' ? (
           <>
-            {/* Daily Attendance Table - Updated to match image */}
+            {/* Daily Attendance Table */}
             <div className="table-responsive g-table-wrapper gt-scroll mb-4">
               <h5 className="mb-3">Attendance Data - {TODAY}</h5>
               <table className='table g-table table-hover' style={{minWidth:"1000px"}}>
@@ -367,74 +619,35 @@ export default function AttendancePage() {
                   <tr>
                     <th>Members</th>
                     <th>Status</th>
-                    <th>Shift Starts</th>
                     <th>Start Time</th>
                     <th>End Time</th>
-                    <th>Shift Ends</th>
-                    <th>Tracked Time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dailyShifts.length > 0 ? (
-                    dailyShifts.flatMap(shift => 
-                      shift.member_usernames?.map((member: string, index: number) => {
-                        const status = getStatus(shift);
-                        const statusColor = getStatusColor(status);
-                        
-                        // Calculate tracked time (this would come from your API)
-                        // For now, using the shift.tracked_hours or calculating based on shift times
-                        const startTime = dayjs(`${TODAY} ${shift.start_time}`);
-                        const endTime = dayjs(`${TODAY} ${shift.end_time}`);
-                        const trackedHours = shift.tracked_hours || 
-                          (status === 'Completed' ? endTime.diff(startTime, 'hour') : 0);
-                        
+                    dailyShifts.flatMap(shift =>
+                      (shift.member_usernames || shift.members || []).map((member: string, index: number) => {
+                        const att = getMemberAttendanceStatus(shift, member);
+                        const statusColor = getStatusColor(att.label);
                         return (
                           <tr key={`${shift.id}-${index}`}>
                             <td className="fw-bold">{member}</td>
                             <td>
                               <span className={`fw-bold ${statusColor}`}>
-                                {status}
+                                {att.label}
                               </span>
                             </td>
-                            <td>{shift.start_time}</td>
-                            <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <span className="text-muted">@ tracking</span>
-                              </div>
-                            </td>
-                            <td>{shift.end_time}</td>
-                            <td>1:00PM</td>
-                            <td className="fw-bold">{trackedHours}hr</td>
+                            <td>{formatTime(shift.start_time)}</td>
+                            <td>{formatTime(shift.end_time)}</td>
                           </tr>
                         );
                       })
                     )
                   ) : (
                     <tr>
-                      {/* <td colSpan={7} className="text-center py-4">
-                        No shifts scheduled for today
-                      </td> */}
+                      <td colSpan={4} className="text-center py-4">No shifts scheduled for today</td>
                     </tr>
                   )}
-                  
-                  {/* Sample static data matching your image */}
-                  <tr>
-                    <td className="fw-bold">Hamza</td>
-                    <td>
-                      <span className="fw-bold text-danger">
-                        Late
-                      </span>
-                    </td>
-                    <td>7:00PM</td>
-                    <td>
-                      <div className="d-flex align-items-center gap-2">
-                        <span className="text-muted">@ tracking</span>
-                      </div>
-                    </td>
-                    <td>9:00PM</td>
-                    <td>1:00PM</td>
-                    <td className="fw-bold">5hr</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -447,34 +660,17 @@ export default function AttendancePage() {
                   <div className="card shift_card_1 border-0 g-shadow h-100 p-3">
                     <div className="d-flex justify-content-between align-items-start mb-2">
                       <strong className="text-truncate">{s.name}</strong>
-                      <span className={`badge ${getStatusColor(getStatus(s))} bg-light`}>
-                        {getStatus(s)}
+                      <span className={`badge ${getStatusColor(getMemberAttendanceStatus(s, (s.member_usernames || s.members || [])[0] || '').label)} bg-light`}>
+                        {getMemberAttendanceStatus(s, (s.member_usernames || s.members || [])[0] || '').label}
                       </span>
                     </div>
                     <div className="d-flex gap-2 align-items-center mb-2">
-                      <span className="text-muted">
-                        <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M256,8C119,8,8,119,8,256S119,504,256,504,504,393,504,256,393,8,256,8Zm92.49,313h0l-20,25a16,16,0,0,1-22.49,2.5h0l-67-49.72a40,40,0,0,1-15-31.23V112a16,16,0,0,1,16-16h32a16,16,0,0,1,16,16V256l58,42.5A16,16,0,0,1,348.49,321Z"></path>
-                        </svg>
-                      </span>
-                      <span>Time: {s.start_time} – {s.end_time}</span>
+                      <span className="text-muted">Time: {formatTime(s.start_time)} – {formatTime(s.end_time)}</span>
                     </div>
                     <div className='d-flex gap-2 align-items-center mb-2'>
-                      <span className="text-muted">
-                        <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 640 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M96 224c35.3 0 64-28.7 64-64s-28.7-64-64-64-64 28.7-64 64 28.7 64 64 64zm448 0c35.3 0 64-28.7 64-64s-28.7-64-64-64-64 28.7-64 64 28.7 64 64 64zm32 32h-64c-17.6 0-33.5 7.1-45.1 18.6 40.3 22.1 68.9 62 75.1 109.4h66c17.7 0 32-14.3 32-32v-32c0-35.3-28.7-64-64-64zm-256 0c61.9 0 112-50.1 112-112S381.9 32 320 32 208 82.1 208 144s50.1 112 112 112zm76.8 32h-8.3c-20.8 10-43.9 16-68.5 16s-47.6-6-68.5-16h-8.3C179.6 288 128 339.6 128 403.2V432c0 26.5 21.5 48 48 48h288c26.5 0 48-21.5 48-48v-28.8c0-63.6-51.6-115.2-115.2-115.2zm-223.7-13.4C161.5 263.1 145.6 256 128 256H64c-35.3 0-64 28.7-64 64v32c0 17.7 14.3 32 32 32h65.9c6.3-47.4 34.9-87.3 75.2-109.4z"></path>
-                        </svg>
-                      </span>
-                      <span className="text-truncate">Members: {s.member_usernames?.join(', ') || 'No members'}</span>
+                      <span className="text-truncate">Members: {(s.member_usernames || s.members || []).join ? (s.member_usernames || s.members).join(', ') : 'No members'}</span>
                     </div>
-                    <div className='d-flex gap-2 align-items-center'>
-                      <span className="text-muted">
-                        <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 512 512" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M256,8C119,8,8,119,8,256S119,504,256,504,504,393,504,256,393,8,256,8Zm92.49,313h0l-20,25a16,16,0,0,1-22.49,2.5h0l-67-49.72a40,40,0,0,1-15-31.23V112a16,16,0,0,1,16-16h32a16,16,0,0,1,16,16V256l58,42.5A16,16,0,0,1,348.49,321Z"></path>
-                        </svg>
-                      </span>
-                      <span>Tracked Hours: {s.tracked_hours || 0}</span>
-                    </div>
+                   
                   </div>
                 </div>
               )) : (
@@ -488,38 +684,75 @@ export default function AttendancePage() {
           </>
         ) : (
           <>
-            <button className="mb-3 btn g-btn" onClick={openCreateModal}>
-              Create Shift
-            </button>
-            
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <button className="mb-3 btn g-btn" onClick={openCreateModal}>
+                Create Shift
+              </button>
+            </div>
+
+            {/* If assigned shifts exist, show them first (member view) */}
+            {assignedShifts.length > 0 && (
+              <>
+                <h6>My Assigned Shifts</h6>
+                {assignedShifts.map(s => (
+                  <div key={`assigned-${s.id}`} className="card shift_card_1 p-3 mb-2">
+                    <div className="d-flex justify-content-between align-items-center flex-wrap">
+                      <h5>{s.name}</h5>
+                      <div className="d-flex align-items-center flex-wrap gap-2">
+                        {/* SHOW Edit/Delete FOR ALL */}
+                        <>
+                          <button className="g-btn" onClick={() => handleEditShift(s)}>Edit</button>
+                          <button className="g-btn" onClick={() => handleDeleteClick(s.id, s.name)}>Delete</button>
+                        </>
+                      </div>
+                    </div>
+                    <div>Members: {(s.member_usernames || s.members || []).join ? (s.member_usernames || s.members).join(', ') : 'No members'}</div>
+                    <div>
+                      Days:{' '}
+                      {Array.isArray(s.working_days)
+                        ? s.working_days.join(', ')
+                        : s.working_days}
+                    </div>
+                    <div>Time: {formatTime(s.start_time)}–{formatTime(s.end_time)} ({s.timezone})</div>
+                    <div>
+                      Repeat: {s.repeat_option}
+                      {s.repeat_option !== 'none' && s.repeat_until ? ` until ${s.repeat_until}` : ''}
+                    </div>
+                    <div>Start Date: {s.start_date}</div>
+                    <div>Required Hours: {s.required_hours}</div>
+                    <div>Shift Type: {s.shift_type}</div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Creator / all shifts list */}
+            <h6 className="mt-4">All Shifts</h6>
             {shiftsData.length > 0 ? (
               shiftsData.map(s => (
-                <div key={s.id} className="card shift_card_1 p-3 mb-2">
+                <div key={`all-${s.id}`} className="card shift_card_1 p-3 mb-2">
                   <div className="d-flex justify-content-between align-items-center flex-wrap">
                     <h5>{s.name}</h5>
                     <div className="d-flex align-items-center flex-wrap gap-2">
-                      <button 
-                        className="g-btn"
-                        onClick={() => handleEditShift(s)}
-                      >
-                        Edit
-                      </button>
-                      <button 
-                        className="g-btn"
-                        onClick={() => handleDeleteClick(s.id, s.name)}
-                      >
-                        Delete
-                      </button>
+                      {/* SHOW Edit/Delete FOR ALL */}
+                      <>
+                        <button className="g-btn" onClick={() => handleEditShift(s)}>
+                          Edit
+                        </button>
+                        <button className="g-btn" onClick={() => handleDeleteClick(s.id, s.name)}>
+                          Delete
+                        </button>
+                      </>
                     </div>
                   </div>
-                  <div>Members: {s.member_usernames?.join(', ') || 'No members'}</div>
+                  <div>Members: {(s.member_usernames || s.members || []).join ? (s.member_usernames || s.members).join(', ') : 'No members'}</div>
                   <div>
                     Days:{' '}
                     {Array.isArray(s.working_days)
                       ? s.working_days.join(', ')
                       : s.working_days}
                   </div>
-                  <div>Time: {s.start_time}–{s.end_time} ({s.timezone})</div>
+                  <div>Time: {formatTime(s.start_time)}–{formatTime(s.end_time)} ({s.timezone})</div>
                   <div>
                     Repeat: {s.repeat_option}
                     {s.repeat_option !== 'none' && s.repeat_until ? ` until ${s.repeat_until}` : ''}
@@ -537,9 +770,9 @@ export default function AttendancePage() {
       </div>
 
       {/* Create/Edit Shift Modal */}
-      <Modal 
-        contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper' 
-        show={showModal} 
+      <Modal
+        contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper'
+        show={showModal}
         onHide={() => {
           setShowModal(false);
           resetForm();
@@ -681,10 +914,7 @@ export default function AttendancePage() {
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <button className='g-btn' onClick={() => {
-            setShowModal(false);
-            resetForm();
-          }}>
+          <button className='g-btn' onClick={() => { setShowModal(false); resetForm(); }}>
             Cancel
           </button>
           <button className='g-btn' onClick={submitShift} disabled={modalLoading}>
@@ -696,9 +926,9 @@ export default function AttendancePage() {
       </Modal>
 
       {/* Delete Confirmation Modal */}
-      <Modal 
-        contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper' 
-        show={showDeleteModal} 
+      <Modal
+        contentClassName='border-0 rounded-4 g-shadow g-modal-conntent-wrapper'
+        show={showDeleteModal}
         onHide={() => setShowDeleteModal(false)}
       >
         <Modal.Header closeButton>
@@ -709,16 +939,16 @@ export default function AttendancePage() {
           <p className="text-danger"><small>This action cannot be undone.</small></p>
         </Modal.Body>
         <Modal.Footer>
-          <button 
-            className='g-btn' 
+          <button
+            className='g-btn'
             onClick={() => setShowDeleteModal(false)}
             disabled={deleteLoading}
           >
             Cancel
           </button>
-          <button 
-            className='g-btn btn-danger' 
-            onClick={confirmDeleteShift} 
+          <button
+            className='g-btn btn-danger'
+            onClick={confirmDeleteShift}
             disabled={deleteLoading}
           >
             {deleteLoading ? (

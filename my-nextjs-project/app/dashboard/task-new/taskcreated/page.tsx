@@ -177,15 +177,15 @@ export default function CreatedTasksPage(): JSX.Element {
   };
 
   return (
-    <div className="container py-4">
-      <div className="header-card p-3 mb-4 d-flex justify-content-between align-items-start">
+    <div className="container py-4 px-lg-0">
+      <div className="header-card mb-4 d-flex justify-content-between align-items-start">
         <div>
           <h3 className="mb-1">Tasks — Created by Me</h3>
           <p className="text-muted mb-0">All tasks you created. Click a row to expand details inline.</p>
         </div>
         <div className="d-flex gap-2 align-items-center">
           <Button className="g-btn" onClick={() => router.push("/dashboard/task-new")}>+ Create Task</Button>
-          <Button className="g-btn-secondary" onClick={handleRefresh}>Refresh</Button>
+          <Button className="g-btn btn" onClick={handleRefresh}>Refresh</Button>
         </div>
       </div>
 
@@ -198,10 +198,10 @@ export default function CreatedTasksPage(): JSX.Element {
       {!loading && !error && tasks.length === 0 && <Alert variant="info">You haven't created any tasks yet.</Alert>}
 
       {!loading && !error && tasks.length > 0 && (
-        <div className="card list-card p-3">
-          <div className="table-responsive custom-table-wrap">
-            <Table hover bordered responsive className="mb-0 align-middle">
-              <thead className="table-head">
+        <div className="">
+          <div className="table-responsive">
+            <table className="table g-table">
+              <thead>
                 <tr>
                   <th>Title</th>
                   <th>Project</th>
@@ -345,7 +345,7 @@ export default function CreatedTasksPage(): JSX.Element {
                   );
                 })}
               </tbody>
-            </Table>
+            </table>
           </div>
 
           {pageInfo && (pageInfo.next || pageInfo.previous) && (
@@ -360,110 +360,7 @@ export default function CreatedTasksPage(): JSX.Element {
         </div>
       )}
 
-      <style jsx>{`
-        :global(body) {
-          --page-bg-00: #e9fdfb;
-          --card-bg: #ffffff;
-          background: linear-gradient(180deg, var(--page-bg-00) 0%, #f6fffd 100%);
-          -webkit-font-smoothing: antialiased;
-          font-family: Inter, "Helvetica Neue", Arial, sans-serif;
-        }
-
-        .header-card {
-          background: linear-gradient(90deg, rgba(120,94,200,0.06), rgba(160,120,255,0.03));
-          border-radius: 12px;
-          align-items: center;
-          border: 1px solid rgba(10,12,15,0.03);
-        }
-
-        .list-card {
-          border-radius: 10px;
-          padding: 0.5rem;
-          background: transparent;
-          border: none;
-        }
-
-        .custom-table-wrap { overflow: auto; }
-
-        :global(.table) {
-          width: 100%;
-          border-collapse: separate !important;
-          border-spacing: 0 !important;
-          background: transparent;
-          margin-bottom: 0;
-          font-size: 14px;
-        }
-
-        :global(.table thead th) {
-          background: linear-gradient(90deg,#6f2bd6,#4e1fb3) !important;
-          color: #fff !important;
-          font-weight: 700 !important;
-          padding: 12px 14px !important;
-          border: none !important;
-          vertical-align: middle !important;
-        }
-        :global(.table thead th:first-child) { border-top-left-radius: 8px; }
-        :global(.table thead th:last-child) { border-top-right-radius: 8px; }
-
-        :global(.table tbody td) {
-          background: rgba(113,54,178,0.05) !important;
-          padding: 10px 14px !important;
-          color: #2b2b2b !important;
-          border-top: 1px solid rgba(75,0,130,0.05) !important;
-          vertical-align: middle !important;
-        }
-
-        :global(.table tbody tr:first-child td) { background: rgba(113,54,178,0.08) !important; }
-
-        :global(.table-bordered) { border: none !important; }
-        :global(.table-bordered td), :global(.table-bordered th) { border: none !important; }
-
-        .row-main:hover td { background: rgba(113,54,178,0.12) !important; }
-
-        .task-title { color: #0f1724; font-weight: 700; }
-
-        .ai-badge {
-          background: linear-gradient(90deg,#5cc3ff,#28a3ff) !important;
-          color: #042a3a !important;
-          font-weight: 700;
-          border-radius: 999px;
-          padding: 0.25em 0.6em;
-          font-size: 12px;
-        }
-
-        .badge.locked {
-          background: #ffd84d !important;
-          color: #4a3000 !important;
-          font-weight: 700;
-          border-radius: 6px;
-          padding: 0.15em 0.5em;
-          font-size: 12px;
-        }
-
-        .text-muted { color: rgba(15,23,42,0.45) !important; }
-
-        .detail-cell {
-          background: #fff !important;
-          border-top: none !important;
-          box-shadow: 0 6px 18px rgba(35, 31, 32, 0.03);
-          border-radius: 0 0 8px 8px;
-        }
-
-        .detail-table th { width: 34%; background: #faf7ff; }
-
-        .meta-box { background: #fff; border: 1px solid rgba(0,0,0,0.04); padding: 8px; border-radius: 8px; }
-        .meta-pre { background: #fafaff; padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; }
-
-        .g-btn { background: linear-gradient(90deg, #6f42c1, #8e44ad); color: white; border: none; padding: 8px 14px; border-radius: 8px; }
-        .g-btn-secondary { background: white; color: #333; border: 1px solid rgba(0,0,0,0.06); padding: 8px 12px; border-radius: 8px; }
-
-        @media (max-width: 880px) {
-          .table thead { display: none; }
-          .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
-          .table tr { margin-bottom: 0.8rem; border-radius: 8px; }
-          .table td { display: flex; justify-content: space-between; padding: 0.6rem 0.8rem; border-radius: 8px; background: #fff; box-shadow: 0 6px 18px rgba(35, 31, 32, 0.03); margin-bottom: 8px; }
-        }
-      `}</style>
+ 
     </div>
   );
 }

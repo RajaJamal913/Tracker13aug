@@ -1,4 +1,3 @@
-// app/dashboard/member-monitoring/page.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -13,8 +12,8 @@ import {
 } from 'react-bootstrap';
 import { FaPlay, FaPause } from 'react-icons/fa';
 
-// API base URL from environment variable
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
 
 interface ProjectOption {
   id: number;
@@ -26,39 +25,74 @@ type StatusResponse = {
   status: 'active' | 'paused';
   total_seconds: number;
 };
-const membersActivityData = [
-  { Name: "Hamza", Project: "Law website design", Task: "Hamza", ActivityDesc: "NA", status: "In Progress" },
-  { Name: "Jamal", Project: "CRM website design", Task: "Hamza", ActivityDesc: "NA", status: "Not Started" },
 
+const membersActivityData = [
+  { Name: 'Hamza', Project: 'Law website design', Task: 'Hamza', ActivityDesc: 'NA', status: 'In Progress' },
+  { Name: 'Jamal', Project: 'CRM website design', Task: 'Hamza', ActivityDesc: 'NA', status: 'Not Started' },
 ];
+
 export default function MonitoringPage() {
   // ─── State ───
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [sessionData, setSessionData] = useState<StatusResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Persist project selection
+  /* ─────────────────────────────────────
+     Load token ONLY
+  ───────────────────────────────────── */
   useEffect(() => {
-    const savedProj = localStorage.getItem('selectedProject');
-    if (savedProj) {
-      setSelectedProject(Number(savedProj));
-    }
-    const savedToken = localStorage.getItem('token');
-    if (savedToken) setToken(savedToken);
+    const t = localStorage.getItem('token');
+    if (t) setToken(t);
   }, []);
 
-  // Store when user changes project
+  /* ─────────────────────────────────────
+     Load projects + VALIDATE saved project
+  ───────────────────────────────────── */
+  useEffect(() => {
+    if (!token) return;
+
+    fetch(`${API_BASE_URL}/api/projects/`, {
+      headers: { Authorization: `Token ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load projects');
+        return res.json();
+      })
+      .then((data: ProjectOption[]) => {
+        setProjects(data);
+
+        const saved = localStorage.getItem('selectedProject');
+        const savedId = saved ? Number(saved) : null;
+
+        if (savedId && data.some(p => p.id === savedId)) {
+          setSelectedProject(savedId);
+        } else if (data.length > 0) {
+          setSelectedProject(data[0].id);
+          localStorage.setItem('selectedProject', data[0].id.toString());
+        } else {
+          setSelectedProject(null);
+          localStorage.removeItem('selectedProject');
+        }
+      })
+      .catch(() => setError('Failed to load projects'));
+  }, [token]);
+
+  /* ─────────────────────────────────────
+     Project change (manual)
+  ───────────────────────────────────── */
   const handleProjectChange = (id: number) => {
     setSelectedProject(id);
     localStorage.setItem('selectedProject', id.toString());
   };
 
-  // ─── Timer controls ───
+  /* ─────────────────────────────────────
+     Timer helpers
+  ───────────────────────────────────── */
   const startLocalTimer = useCallback(() => {
     if (intervalRef.current) return;
     intervalRef.current = setInterval(() => {
@@ -77,29 +111,24 @@ export default function MonitoringPage() {
     }
   }, []);
 
-  // Load project list
-  useEffect(() => {
-    if (!token) return;
-    fetch(`${API_BASE_URL}/api/projects/`, {
-      headers: { Authorization: `Token ${token}` },
-    })
-      .then(res => res.json())
-      .then((data: ProjectOption[]) => setProjects(data))
-      .catch(() => setError('Failed to load projects'));
-  }, [token]);
-
-  // Fetch status
+  /* ─────────────────────────────────────
+     Fetch status (SAFE)
+  ───────────────────────────────────── */
   const fetchStatus = useCallback(
     async (projectId: number) => {
       if (!token) return;
+
       setLoading(true);
       setError(null);
+
       try {
         const res = await fetch(
           `${API_BASE_URL}/api/monitor/status/?project=${projectId}`,
           { headers: { Authorization: `Token ${token}` } }
         );
+
         if (!res.ok) throw new Error(await res.text());
+
         const data: StatusResponse = await res.json();
         setSessionData(data);
         data.status === 'active' ? startLocalTimer() : stopLocalTimer();
@@ -113,33 +142,44 @@ export default function MonitoringPage() {
     [token, startLocalTimer, stopLocalTimer]
   );
 
-  // React to project selection
+  /* ─────────────────────────────────────
+     React ONLY when project is valid
+  ───────────────────────────────────── */
   useEffect(() => {
-    if (selectedProject !== null) {
-      fetchStatus(selectedProject);
-      const handler = () => fetchStatus(selectedProject);
-      window.addEventListener('trackerStatusChanged', handler);
-      return () => {
-        window.removeEventListener('trackerStatusChanged', handler);
-        stopLocalTimer();
-      };
-    }
-  }, [selectedProject, fetchStatus, stopLocalTimer]);
+    if (!selectedProject || projects.length === 0) return;
 
-  // Toggle start/stop
+    fetchStatus(selectedProject);
+
+    const handler = () => fetchStatus(selectedProject);
+    window.addEventListener('trackerStatusChanged', handler);
+
+    return () => {
+      window.removeEventListener('trackerStatusChanged', handler);
+      stopLocalTimer();
+    };
+  }, [selectedProject, projects, fetchStatus, stopLocalTimer]);
+
+  /* ─────────────────────────────────────
+     Toggle start / stop
+  ───────────────────────────────────── */
   const handleToggle = async () => {
-    if (!token || selectedProject === null || !sessionData) return;
+    if (!token || !selectedProject || !sessionData) return;
+
     setActionLoading(true);
     const action = sessionData.status === 'active' ? 'stop' : 'start';
+
     try {
       const res = await fetch(
         `${API_BASE_URL}/api/monitor/${action}/?project=${selectedProject}`,
         { method: 'POST', headers: { Authorization: `Token ${token}` } }
       );
+
       if (!res.ok) throw new Error(await res.text());
+
       const data: StatusResponse = await res.json();
       setSessionData(data);
       data.status === 'active' ? startLocalTimer() : stopLocalTimer();
+
       window.dispatchEvent(new CustomEvent('trackerStatusChanged'));
     } catch (err: any) {
       setError(err.message);
@@ -148,13 +188,16 @@ export default function MonitoringPage() {
     }
   };
 
-  // Format HH:MM:SS
+  /* ─────────────────────────────────────
+     Utils
+  ───────────────────────────────────── */
   const formatTime = (secs: number) => {
     const h = String(Math.floor(secs / 3600)).padStart(2, '0');
     const m = String(Math.floor((secs % 3600) / 60)).padStart(2, '0');
     const s = String(secs % 60).padStart(2, '0');
     return `${h}:${m}:${s}`;
   };
+
 
   // Render
   return (

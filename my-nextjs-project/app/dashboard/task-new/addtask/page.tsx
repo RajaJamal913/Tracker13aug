@@ -85,6 +85,13 @@ export default function SmartTaskMgt(): JSX.Element {
   const [totalCreatedTasks, setTotalCreatedTasks] = useState<number | null>(null);
   const [totalLoading, setTotalLoading] = useState<boolean>(true);
 
+  // dynamic stat cards
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
+  const [overdueCount, setOverdueCount] = useState<number | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [statsLoading, setStatsLoading] = useState<boolean>(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
   // helper to display project label
   const projectLabel = (id: any) => {
     if (id == null) return "";
@@ -245,6 +252,126 @@ export default function SmartTaskMgt(): JSX.Element {
     };
   }, []);
 
+  // NEW: fetch created tasks and compute completed / overdue / pending counts
+  useEffect(() => {
+    let mounted = true;
+    const fetchCreatedForStats = async () => {
+      setStatsLoading(true);
+      setStatsError(null);
+      try {
+        // try to fetch many items in one request; backend may paginate but often supports page_size
+        const res = await fetchWithAuth("/api/tasksai/created/?page_size=1000");
+        if (!res || !res.ok) {
+          // try without page_size as fallback
+          const res2 = await fetchWithAuth("/api/tasksai/created/");
+          if (!res2 || !res2.ok) {
+            throw new Error(`Failed (${res?.status ?? res2?.status ?? "unknown"})`);
+          }
+          const data2 = await res2.json().catch(() => null);
+          analyzeAndSetCounts(data2);
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        analyzeAndSetCounts(data);
+      } catch (err: any) {
+        console.error("[Tasks Created] stats fetch error:", err);
+        if (!mounted) return;
+        setStatsError(String(err?.message ?? err) || "Failed fetching created tasks");
+        setCompletedCount(null);
+        setOverdueCount(null);
+        setPendingCount(null);
+      } finally {
+        if (!mounted) return;
+        setStatsLoading(false);
+      }
+    };
+
+    const analyzeAndSetCounts = (data: any) => {
+      if (!mounted) return;
+      let list: any[] = [];
+      if (!data) {
+        list = [];
+      } else if (Array.isArray(data)) {
+        list = data;
+      } else if (data && Array.isArray(data.results)) {
+        list = data.results;
+      } else if (data && Array.isArray(data.data)) {
+        list = data.data;
+      } else if (data && typeof data === "object") {
+        // if it's a single object, wrap; otherwise try to find array inside
+        if (data.id || data.pk) list = [data];
+        else {
+          const maybeArr = Object.values(data).find((v) => Array.isArray(v));
+          list = Array.isArray(maybeArr) ? maybeArr : [];
+        }
+      }
+
+      // compute counts with robust detection
+      let completed = 0;
+      let overdue = 0;
+      let pending = 0;
+      const now = Date.now();
+
+      const isCompleted = (t: any) => {
+        try {
+          // common boolean flags
+          if (t.completed === true || t.is_completed === true || t.done === true) return true;
+          // completed_at-ish timestamps
+          if (t.completed_at || t.finished_at || t.closed_at) return true;
+          // status strings
+          if (t.status && typeof t.status === "string") {
+            const s = t.status.toLowerCase();
+            if (s.includes("complete") || s.includes("done") || s.includes("closed") || s.includes("finished") || s.includes("resolved")) return true;
+          }
+          // workflow/state
+          if (t.state && typeof t.state === "string") {
+            const s = t.state.toLowerCase();
+            if (s.includes("complete") || s.includes("done") || s.includes("closed") || s.includes("finished") || s.includes("resolved")) return true;
+          }
+          // some APIs use numeric status codes (e.g., 2 = completed); be conservative and only treat 1/true as completed above
+        } catch (e) {
+          // ignore
+        }
+        return false;
+      };
+
+      for (const t of list) {
+        const completedFlag = isCompleted(t);
+        let deadlineDate: number | null = null;
+        try {
+          const dl = t.deadline || t.due_date || t.due || (t.extra && t.extra.deadline) || null;
+          if (dl) {
+            // Accept both date-only and ISO datetimes
+            const parsed = new Date(dl);
+            if (!isNaN(parsed.getTime())) deadlineDate = parsed.getTime();
+          }
+        } catch (e) {
+          deadlineDate = null;
+        }
+
+        if (completedFlag) {
+          completed += 1;
+          continue;
+        }
+
+        if (deadlineDate !== null && deadlineDate < now) {
+          overdue += 1;
+        } else {
+          pending += 1;
+        }
+      }
+
+      setCompletedCount(completed);
+      setOverdueCount(overdue);
+      setPendingCount(pending);
+    };
+
+    fetchCreatedForStats();
+    return () => {
+      mounted = false;
+    };
+  }, [/* run on mount only */]);
+
   // create task: POST to backend and append returned item to tasks
   const createTaskOnServer = async (payload: Record<string, any>) => {
     const res = await fetchWithAuth("/api/tasksai/", {
@@ -375,6 +502,7 @@ export default function SmartTaskMgt(): JSX.Element {
         </div>
 
         <div className="row">
+          {/* Card 1: My Created Task */}
           <div className="col-md-3 col-sm-6">
             <div className="card g-card border-blue" role="button"
               onClick={() => router.push("/dashboard/task-new/taskcreated")}
@@ -385,16 +513,16 @@ export default function SmartTaskMgt(): JSX.Element {
                 <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM3.55556 14.4H9.77778V12.6H3.55556V14.4ZM3.55556 10.8H12.4444V9H3.55556V10.8ZM3.55556 7.2H12.4444V5.4H3.55556V7.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#2F6CE5" />
                 </svg>
-
-
-
               </div>
               <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-blue">6</h5>
-
+                <h5 className="mb-0 fw-bold txt-clr-blue">
+                  {totalLoading ? <Spinner animation="border" size="sm" /> : totalCreatedTasks ?? 0}
+                </h5>
               </div>
             </div>
           </div>
+
+          {/* Card 2: Completed Task */}
           <div className="col-md-3 col-sm-6">
             <div className="card g-card border-green">
               <div className="icon mb-2 d-flex align-items-center justify-content-between">
@@ -402,15 +530,16 @@ export default function SmartTaskMgt(): JSX.Element {
                 <svg width="16" height="20" viewBox="0 0 16 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M10 0H2C0.9 0 0.0100002 0.9 0.0100002 2L0 18C0 19.1 0.89 20 1.99 20H14C15.1 20 16 19.1 16 18V6L10 0ZM6.94 16L3.4 12.46L4.81 11.05L6.93 13.17L11.17 8.93L12.58 10.34L6.94 16ZM9 7V1.5L14.5 7H9Z" fill="#2F6CE5" />
                 </svg>
-
-
               </div>
               <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-green">6</h5>
-
+                <h5 className="mb-0 fw-bold txt-clr-green">
+                  {statsLoading ? <Spinner animation="border" size="sm" /> : (completedCount ?? 0)}
+                </h5>
               </div>
             </div>
           </div>
+
+          {/* Card 3: Over Due Task */}
           <div className="col-md-3 col-sm-6">
             <div className="card g-card border-yellow">
               <div className="icon mb-2 d-flex align-items-center justify-content-between">
@@ -418,16 +547,16 @@ export default function SmartTaskMgt(): JSX.Element {
                 <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M8 14.4C8.25185 14.4 8.46296 14.3138 8.63333 14.1413C8.8037 13.9688 8.88889 13.755 8.88889 13.5C8.88889 13.245 8.8037 13.0312 8.63333 12.8588C8.46296 12.6863 8.25185 12.6 8 12.6C7.74815 12.6 7.53704 12.6863 7.36667 12.8588C7.1963 13.0312 7.11111 13.245 7.11111 13.5C7.11111 13.755 7.1963 13.9688 7.36667 14.1413C7.53704 14.3138 7.74815 14.4 8 14.4ZM7.11111 10.8H8.88889V5.4H7.11111V10.8ZM1.77778 18C1.28889 18 0.87037 17.8237 0.522222 17.4712C0.174074 17.1187 0 16.695 0 16.2V3.6C0 3.105 0.174074 2.68125 0.522222 2.32875C0.87037 1.97625 1.28889 1.8 1.77778 1.8H5.51111C5.7037 1.26 6.02593 0.825 6.47778 0.495C6.92963 0.165 7.43704 0 8 0C8.56296 0 9.07037 0.165 9.52222 0.495C9.97407 0.825 10.2963 1.26 10.4889 1.8H14.2222C14.7111 1.8 15.1296 1.97625 15.4778 2.32875C15.8259 2.68125 16 3.105 16 3.6V16.2C16 16.695 15.8259 17.1187 15.4778 17.4712C15.1296 17.8237 14.7111 18 14.2222 18H1.77778ZM1.77778 16.2H14.2222V3.6H1.77778V16.2ZM8 2.925C8.19259 2.925 8.35185 2.86125 8.47778 2.73375C8.6037 2.60625 8.66667 2.445 8.66667 2.25C8.66667 2.055 8.6037 1.89375 8.47778 1.76625C8.35185 1.63875 8.19259 1.575 8 1.575C7.80741 1.575 7.64815 1.63875 7.52222 1.76625C7.3963 1.89375 7.33333 2.055 7.33333 2.25C7.33333 2.445 7.3963 2.60625 7.52222 2.73375C7.64815 2.86125 7.80741 2.925 8 2.925Z" fill="#D08700" />
                 </svg>
-
-
-
               </div>
               <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-yellow">6</h5>
-
+                <h5 className="mb-0 fw-bold txt-clr-yellow">
+                  {statsLoading ? <Spinner animation="border" size="sm" /> : (overdueCount ?? 0)}
+                </h5>
               </div>
             </div>
           </div>
+
+          {/* Card 4: Pending Task */}
           <div className="col-md-3 col-sm-6">
             <div className="card g-card border-red">
               <div className="icon mb-2 d-flex align-items-center justify-content-between">
@@ -435,22 +564,20 @@ export default function SmartTaskMgt(): JSX.Element {
                 <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M11.7895 18C10.6246 18 9.63158 17.5821 8.81053 16.7464C7.98947 15.9107 7.57895 14.9 7.57895 13.7143C7.57895 12.5286 7.98947 11.5179 8.81053 10.6821C9.63158 9.84643 10.6246 9.42857 11.7895 9.42857C12.9544 9.42857 13.9474 9.84643 14.7684 10.6821C15.5895 11.5179 16 12.5286 16 13.7143C16 14.9 15.5895 15.9107 14.7684 16.7464C13.9474 17.5821 12.9544 18 11.7895 18ZM13.2 15.75L13.7895 15.15L12.2105 13.5429V11.1429H11.3684V13.8857L13.2 15.75ZM1.68421 17.1429C1.22105 17.1429 0.824561 16.975 0.494737 16.6393C0.164912 16.3036 0 15.9 0 15.4286V3.42857C0 2.95714 0.164912 2.55357 0.494737 2.21786C0.824561 1.88214 1.22105 1.71429 1.68421 1.71429H5.2C5.35439 1.21429 5.65614 0.803571 6.10526 0.482143C6.55439 0.160714 7.04561 0 7.57895 0C8.14035 0 8.64211 0.160714 9.08421 0.482143C9.52632 0.803571 9.82456 1.21429 9.97895 1.71429H13.4737C13.9368 1.71429 14.3333 1.88214 14.6632 2.21786C14.993 2.55357 15.1579 2.95714 15.1579 3.42857V8.78571C14.9053 8.6 14.6386 8.44286 14.3579 8.31429C14.0772 8.18571 13.7825 8.07143 13.4737 7.97143V3.42857H11.7895V6H3.36842V3.42857H1.68421V15.4286H6.14737C6.24561 15.7429 6.3579 16.0429 6.48421 16.3286C6.61053 16.6143 6.76491 16.8857 6.94737 17.1429H1.68421ZM7.57895 3.42857C7.81754 3.42857 8.01754 3.34643 8.17895 3.18214C8.34035 3.01786 8.42105 2.81429 8.42105 2.57143C8.42105 2.32857 8.34035 2.125 8.17895 1.96071C8.01754 1.79643 7.81754 1.71429 7.57895 1.71429C7.34035 1.71429 7.14035 1.79643 6.97895 1.96071C6.81754 2.125 6.73684 2.32857 6.73684 2.57143C6.73684 2.81429 6.81754 3.01786 6.97895 3.18214C7.14035 3.34643 7.34035 3.42857 7.57895 3.42857Z" fill="#D00E00" />
                 </svg>
-
-
-
               </div>
               <div className="count">
-                <h5 className="mb-0 fw-bold txt-clr-red">6</h5>
-
+                <h5 className="mb-0 fw-bold txt-clr-red">
+                  {statsLoading ? <Spinner animation="border" size="sm" /> : (pendingCount ?? 0)}
+                </h5>
               </div>
             </div>
           </div>
         </div>
 
-
+        {/* (rest of your unchanged layout below...) */}
 
         <div className="row card_wrapper_bg_grad p-4 row w-100 mx-auto d-none">
-          {/* stat cards */}
+          {/* stat cards (hidden) */}
           <div className="col-md-3 col-sm-6">
             <div
               className="card stat-card text-white text-center p-3 card_bg_grad"
@@ -469,35 +596,7 @@ export default function SmartTaskMgt(): JSX.Element {
             </div>
           </div>
 
-          <div className="col-md-3 col-sm-6">
-            <div className="card stat-card text-white text-center p-3 card_bg_grad">
-              <div className="icon-circle mb-2">{/* svg */}</div>
-              <div className="card-data-wrap">
-                <h5 className="mb-0 fw-bold">6</h5>
-                <small>Completed Task</small>
-              </div>
-            </div>
-          </div>
-
-          <div className="col-md-3 col-sm-6">
-            <div className="card stat-card text-white text-center p-3 card_bg_grad">
-              <div className="icon-circle mb-2">{/* svg */}</div>
-              <div className="card-data-wrap">
-                <h5 className="mb-0 fw-bold">0</h5>
-                <small>Over Due Task</small>
-              </div>
-            </div>
-          </div>
-
-          <div className="col-md-3 col-sm-6">
-            <div className="card stat-card text-white text-center p-3 card_bg_grad">
-              <div className="icon-circle mb-2">{/* svg */}</div>
-              <div className="card-data-wrap">
-                <h5 className="mb-0 fw-bold">9</h5>
-                <small>Pending Task</small>
-              </div>
-            </div>
-          </div>
+          {/* ... other hidden stat cards ... */}
         </div>
       </div>
 
@@ -514,7 +613,7 @@ export default function SmartTaskMgt(): JSX.Element {
         <div className="row col-lg-12">{/* Task preview moved to /tasks/preview */}</div>
       </div>
 
-      {/* Modal */}
+      {/* Modal (unchanged) */}
       <Modal
         contentClassName="border-0 rounded-4 g-shadow g-modal-conntent-wrapper p-4"
         show={show}

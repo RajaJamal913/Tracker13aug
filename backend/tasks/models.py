@@ -16,6 +16,16 @@ class Task(models.Model):
         null=True,
         blank=True
     )
+    # NEW: who assigned/created this task (a Member)
+    assigned_by = models.ForeignKey(
+        Member,
+        related_name='assigned_tasks',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Member who assigned this task"
+    )
+
     title = models.CharField(max_length=255)
     due_date = models.DateField(null=True, blank=True)
 

@@ -2,40 +2,71 @@
 
 from django.dispatch import receiver
 from django.contrib.auth.signals import user_logged_in
-from django.db.models.signals import post_save
 from django.utils import timezone
-from .utils import create_or_update_attendance_for
+from django.db.models.signals import post_save
+
 from projects.models import Member
-from realtimemonitoring.models import WorkSession  # adjust import if different
+from realtimemonitoring.models import WorkSession
+
+from .utils import create_or_update_attendance_for
+
 
 @receiver(user_logged_in)
-def mark_attendance_on_login(sender, user, request, **kwargs):
+def mark_attendance_on_login(sender, request, user, **kwargs):
     """
-    Try to mark attendance when a user logs in.
-    This is best-effort — if you're using token auth, user_logged_in may not fire.
+    Attendance MUST be created ONLY on real user login.
+    This is the PRIMARY and preferred mechanism.
     """
     try:
         member = Member.objects.get(user=user)
     except Member.DoesNotExist:
         return
 
-    # use request time if available; else timezone.now()
     detected_dt = timezone.now()
-    create_or_update_attendance_for(member, detected_dt=detected_dt)
+
+    # 🔒 LOGIN ONLY
+    create_or_update_attendance_for(
+        member=member,
+        detected_dt=detected_dt,
+        source="login",
+    )
+
 
 @receiver(post_save, sender=WorkSession)
 def mark_attendance_on_worksession(sender, instance, created, **kwargs):
     """
-    When a WorkSession is started (created) or resumed, ensure attendance exists.
-    Assumes WorkSession has `member`, `start`, `accumulated`, `is_running` fields.
+    WorkSession MUST NOT create attendance.
+    It can ONLY enrich an EXISTING attendance with tracked time.
+
+    This prevents:
+    - auto ON_TIME
+    - auto LATE
+    - phantom attendance
     """
-    try:
-        member = instance.member
-    except Exception:
+
+    member = getattr(instance, "member", None)
+    if not member:
         return
 
-    # only mark when a new session is created or when it is currently running
-    if created or getattr(instance, "is_running", False):
-        detected_dt = instance.start if getattr(instance, "start", None) else timezone.now()
-        tracked = getattr(instance, "accumulated", None) or 0
-        create_or_update_attendance_for(member, detected_dt=detected_dt, tracked_seconds=int(tracked))
+    # Attendance MUST already exist (created via login)
+    attendance_qs = (
+        member.attendance_set
+        .filter(
+            date=timezone.now().date(),
+        )
+        .select_related("shift")
+    )
+
+    if not attendance_qs.exists():
+        return  # 🚫 no login → no attendance
+
+    tracked_seconds = int(getattr(instance, "accumulated", 0) or 0)
+
+    # update tracked_seconds ONLY (safe)
+    for attendance in attendance_qs:
+        if (
+            attendance.tracked_seconds is None
+            or tracked_seconds > attendance.tracked_seconds
+        ):
+            attendance.tracked_seconds = tracked_seconds
+            attendance.save(update_fields=["tracked_seconds"])

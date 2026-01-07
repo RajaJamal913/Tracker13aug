@@ -1,57 +1,85 @@
-from datetime import datetime, date, timedelta
+# shifts/utils.py
+
+from datetime import datetime, date, timedelta, timezone as dt_timezone
 from typing import List, Tuple
 from zoneinfo import ZoneInfo
 import logging
 
 from django.utils import timezone
+from django.db import transaction
+
 from .models import Shift, Attendance
 from projects.models import Member
 
 logger = logging.getLogger(__name__)
 
-# Valid tokens for working_days CSV (shared constant)
 DAY_CHOICES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-# default grace in minutes before being considered late
 DEFAULT_GRACE_MINUTES = 15
 
 
-def _weekday_code(d: date) -> str:
-    return d.strftime("%a")
+# Helper: attempt to discover canonical status values from the model, fallback to strings.
+def _resolve_status_tokens():
+    """
+    Return a dict with keys ON_TIME, LATE, PENDING, ABSENT mapped to the model's values
+    or fallback string tokens if the model does not expose constants.
+    """
+    # default fallbacks
+    defaults = {
+        "ON_TIME": "ON_TIME",
+        "LATE": "LATE",
+        "PENDING": "PENDING",
+        "ABSENT": "ABSENT",
+    }
 
-
-def _tz_for_shift(shift: Shift):
-    if not getattr(shift, "timezone", None):
-        return timezone.get_default_timezone()
     try:
-        return ZoneInfo(shift.timezone)
+        # Try to read the status field choices from the model (if defined)
+        status_field = Attendance._meta.get_field("status")
+        choices = getattr(status_field, "choices", None)
+        if choices:
+            # choices is iterable of (value, label)
+            # Build a set of value strings for quick membership check
+            values = [str(c[0]) for c in choices]
+            # Heuristic: pick likely tokens from choices if present
+            mapping = {
+                "ON_TIME": None,
+                "LATE": None,
+                "PENDING": None,
+                "ABSENT": None,
+            }
+            for v in values:
+                key = v.upper().replace("-", "_").replace(" ", "_")
+                if "ON" in key and "TIME" in key:
+                    mapping["ON_TIME"] = v
+                elif "LATE" == key or "LATE" in key:
+                    if mapping["LATE"] is None:
+                        mapping["LATE"] = v
+                elif "PENDING" in key:
+                    mapping["PENDING"] = v
+                elif "ABSENT" in key:
+                    mapping["ABSENT"] = v
+
+            # Fill any missing with heuristics (try exact names)
+            for k in mapping:
+                if mapping[k] is None:
+                    if k in values:
+                        mapping[k] = k
+                    else:
+                        # fallback to default string
+                        mapping[k] = defaults[k]
+
+            return mapping
     except Exception:
-        logger.warning("Invalid timezone '%s' for shift id=%s; using default tz", shift.timezone, shift.id)
-        return timezone.get_default_timezone()
+        # If anything goes wrong, fall back to constants
+        logger.debug("Could not read Attendance.status choices; using fallback status tokens.")
+
+    return defaults
 
 
-def shifts_for_member_on_date(member: Member, target_date: date) -> List[Shift]:
-    weekday = _weekday_code(target_date)
-    qs = Shift.objects.filter(members=member, working_days__icontains=weekday)
-    result = []
-    for s in qs:
-        if s.start_date and target_date < s.start_date:
-            continue
-        if s.repeat_option != "none" and s.repeat_until and target_date > s.repeat_until:
-            continue
-        day_list = [d.strip() for d in (s.working_days or "").split(",") if d.strip()]
-        if weekday not in day_list:
-            continue
-        result.append(s)
-    return result
-
-
-def _ensure_aware(dt: datetime) -> datetime:
-    if dt is None:
-        return timezone.now()
-    if timezone.is_naive(dt):
-        return timezone.make_aware(dt, timezone.get_default_timezone())
-    return dt
+STATUS = _resolve_status_tokens()
+ON_TIME = STATUS["ON_TIME"]
+LATE = STATUS["LATE"]
+PENDING = STATUS["PENDING"]
+ABSENT = STATUS["ABSENT"]
 
 
 def create_or_update_attendance_for(
@@ -61,115 +89,134 @@ def create_or_update_attendance_for(
     grace_minutes: int = DEFAULT_GRACE_MINUTES,
 ) -> Tuple[List[Attendance], List[str]]:
     """
-    Create or update Attendance rows for a member based on a single check-in moment.
-
-    Rules:
-      - `detected_dt` is normalized to an aware datetime (server default tz if naive).
-      - Status is computed only when creating the attendance or when a strictly earlier login_time is recorded.
-      - When only tracked_seconds changes, status is NOT recomputed.
+    Create/update attendance ONLY for the given Member.
+    No user/email guessing. No creator bleed-over.
     """
-    warnings = []
-    detected_dt = _ensure_aware(detected_dt)
-    now_utc = detected_dt.astimezone(timezone.utc)
 
-    created_or_updated = []
+    warnings: List[str] = []
+    now = detected_dt or timezone.now()
+    created_or_updated: List[Attendance] = []
 
-    candidate_shifts = Shift.objects.filter(members=member)
+    logger.info("=== ATTENDANCE START ===")
+    logger.info(
+        "Member ID=%s | Username=%s",
+        member.id,
+        member.user.username,
+    )
 
-    for s in candidate_shifts:
-        tz = _tz_for_shift(s)
-        localized_now = detected_dt.astimezone(tz)
+    # STRICT: only shifts where THIS member is assigned
+    # NOTE: remove is_active filter if model doesn't have that field
+    shifts = Shift.objects.filter(members=member)
+
+    logger.info(
+        "Shifts for member %s: %s",
+        member.user.username,
+        list(shifts.values_list("id", "name")),
+    )
+
+    if not shifts.exists():
+        logger.debug("No shifts found for member %s", member.user.username)
+
+    for shift in shifts:
+        try:
+            tz = ZoneInfo(shift.timezone) if shift.timezone else timezone.get_default_timezone()
+        except Exception:
+            tz = timezone.get_default_timezone()
+
+        localized_now = timezone.localtime(now, tz)
         target_date = localized_now.date()
+        weekday = target_date.strftime("%a")
 
-        day_token = target_date.strftime("%a")
-        day_list = [d.strip() for d in (s.working_days or "").split(",") if d.strip()]
-        if day_token not in day_list:
-            prev_local_date = (localized_now - timedelta(days=1)).date()
-            if prev_local_date.strftime("%a") in day_list:
-                target_date = prev_local_date
-                day_token = prev_local_date.strftime("%a")
-            else:
-                continue
-
-        if s.start_date and target_date < s.start_date:
-            continue
-        if s.repeat_option != "none" and s.repeat_until and target_date > s.repeat_until:
+        working_days = [d.strip() for d in (shift.working_days or "").split(",") if d.strip()]
+        if weekday not in working_days:
+            logger.debug(
+                "Skipping shift %s – weekday %s not in %s",
+                shift.id,
+                weekday,
+                working_days,
+            )
             continue
 
-        if s.start_time is None or s.end_time is None:
-            warnings.append(f"Shift {s.id} missing start_time or end_time")
-            logger.warning("Shift %s missing times", s.id)
+        # Date bounds
+        if shift.start_date and target_date < shift.start_date:
+            continue
+        if shift.repeat_option != "none" and shift.repeat_until and target_date > shift.repeat_until:
             continue
 
-        shift_start_naive = datetime.combine(target_date, s.start_time)
-        try:
-            shift_start_local = timezone.make_aware(shift_start_naive, tz)
-        except Exception:
-            shift_start_local = shift_start_naive.replace(tzinfo=tz)
+        shift_start = datetime.combine(target_date, shift.start_time).replace(tzinfo=tz)
+        shift_end = datetime.combine(target_date, shift.end_time).replace(tzinfo=tz)
+        if shift.end_time <= shift.start_time:
+            shift_end += timedelta(days=1)
 
-        shift_end_naive = datetime.combine(target_date, s.end_time)
-        if s.end_time <= s.start_time:
-            shift_end_naive = shift_end_naive + timedelta(days=1)
-        try:
-            shift_end_local = timezone.make_aware(shift_end_naive, tz)
-        except Exception:
-            shift_end_local = shift_end_naive.replace(tzinfo=tz)
+        arrive_dt = localized_now
+        diff_minutes = int((arrive_dt - shift_start).total_seconds() // 60)
 
-        arrive_dt_local = detected_dt.astimezone(tz)
-        diff_minutes = int((arrive_dt_local - shift_start_local).total_seconds() / 60)
-
+        # Use resolved tokens instead of Attendance.Status.*
         if diff_minutes <= grace_minutes:
-            computed_status = "ON_TIME"
-            computed_late_minutes = 0
+            status = ON_TIME
+            late_minutes = 0
         else:
-            computed_status = "LATE"
-            computed_late_minutes = max(0, diff_minutes)
+            status = LATE
+            late_minutes = diff_minutes
 
-        login_time_utc = now_utc
+        login_time_utc = now.astimezone(dt_timezone.utc)
 
-        attendance, created = Attendance.objects.get_or_create(
-            member=member,
-            shift=s,
-            date=target_date,
-            defaults={
-                "login_time": login_time_utc,
-                "status": computed_status,
-                "late_minutes": computed_late_minutes,
-                "tracked_seconds": tracked_seconds,
-            },
+        logger.info(
+            "Shift %s | arrive=%s | start=%s | status=%s",
+            shift.id,
+            arrive_dt,
+            shift_start,
+            status,
         )
 
-        if created:
-            logger.info(
-                "Created attendance: member=%s shift=%s date=%s status=%s login=%s",
-                member.id, s.id, target_date, attendance.status, attendance.login_time,
+        with transaction.atomic():
+            attendance, created = Attendance.objects.select_for_update().get_or_create(
+                member=member,
+                shift=shift,
+                date=target_date,
+                defaults={
+                    "login_time": login_time_utc,
+                    "status": status,
+                    "late_minutes": late_minutes,
+                    "tracked_seconds": tracked_seconds,
+                },
             )
-        else:
-            updated = False
-            if attendance.login_time is None or login_time_utc < attendance.login_time:
-                old_login = attendance.login_time
-                old_status = attendance.status
-                attendance.login_time = login_time_utc
-                attendance.status = computed_status
-                attendance.late_minutes = computed_late_minutes
-                updated = True
-                logger.info(
-                    "Updated attendance login (earlier): member=%s shift=%s date=%s old_login=%s new_login=%s old_status=%s new_status=%s",
-                    member.id, s.id, target_date, old_login, attendance.login_time, old_status, attendance.status,
-                )
 
-            if tracked_seconds is not None:
-                if attendance.tracked_seconds is None or tracked_seconds > attendance.tracked_seconds:
-                    attendance.tracked_seconds = tracked_seconds
+            if created:
+                logger.info(
+                    "Attendance CREATED | member=%s shift=%s status=%s",
+                    member.user.username,
+                    shift.id,
+                    status,
+                )
+            else:
+                updated = False
+
+                # Compare against resolved tokens
+                if attendance.status in [
+                    PENDING,
+                    ABSENT,
+                ]:
+                    attendance.login_time = attendance.login_time or login_time_utc
+                    attendance.status = status
+                    attendance.late_minutes = late_minutes
                     updated = True
+
+                if tracked_seconds is not None:
+                    if attendance.tracked_seconds is None or tracked_seconds > attendance.tracked_seconds:
+                        attendance.tracked_seconds = tracked_seconds
+                        updated = True
+
+                if updated:
+                    attendance.save()
                     logger.info(
-                        "Updated attendance tracked_seconds: member=%s shift=%s date=%s tracked_seconds=%s",
-                        member.id, s.id, target_date, attendance.tracked_seconds,
+                        "Attendance UPDATED | member=%s shift=%s status=%s",
+                        member.user.username,
+                        shift.id,
+                        attendance.status,
                     )
 
-            if updated:
-                attendance.save()
+            created_or_updated.append(attendance)
 
-        created_or_updated.append(attendance)
-
+    logger.info("=== ATTENDANCE END ===")
     return created_or_updated, warnings

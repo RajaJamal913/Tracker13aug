@@ -345,7 +345,7 @@ export default function LoginPage(): JSX.Element {
 
 
       </header>
-      <section className="login-sec">
+      <section className="login-sec px-3 px-lg-0">
         <div className="login-container container">
           <div className="login-card">
             <Image className="login-logo img-fluid" src="/assets/images/new/login-logo.png" alt="logo" width={200} height={80} />
@@ -417,7 +417,21 @@ export default function LoginPage(): JSX.Element {
         .login-container { display: flex; gap: 2rem; align-items: center; justify-content: center; }
         .login-card { max-width: 420px; padding: 28px; border-radius: 8px; background: #fff; }
         .login-image-wrap { flex: 1 1 40%; }
-        @media (max-width: 992px) { .login-container { flex-direction: column; } .login-image-wrap { display: none; } }
+        @media (max-width: 992px) { .login-container { flex-direction: column; } .login-image-wrap { display: none; }
+        
+        .login-card {
+  
+    max-width: 100%;
+   padding: 10px;
+    width: 100%;
+}
+    
+    .login-container input.form-control {
+    max-width: 100%;
+    width: 100%;
+   
+}
+        }
       `}</style>
       </section>
 

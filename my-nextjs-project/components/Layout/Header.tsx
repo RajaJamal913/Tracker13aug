@@ -7,6 +7,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import BreakButton from "@/components/trackerbtn";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import MoreMenu from '@/components/MoreMenu';
 import StartTracker from '@/components/StartTracker';
 import { Menu } from "primereact/menu";
 import { Avatar } from "primereact/avatar";
@@ -244,7 +245,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           </div>
 
           {/* Center Section: Search Bar */}
-          <div style={{ flex: "1", maxWidth: "400px", width: "100%" }}>
+          <div style={{ flex: "1", width: "100%" }}>
             <div
               className="input-group"
               style={{ backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "20px", padding: "2px 12px", height: "30px" }}
@@ -299,7 +300,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 {/* Grid Icon */}
                 <Link href="#" className="btn btn-ghost btn-sm p-0">
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M1 1H1.00642" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M3.99658 1H4.00301" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M6.99316 1H6.99959" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
@@ -309,7 +310,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                     <path d="M1 6.99414H1.00642" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M3.99658 6.99414H4.00301" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
                     <path d="M6.99316 6.99414H6.99959" stroke="#5C4727" stroke-width="2" stroke-linecap="round" />
-                  </svg>
+                  </svg> */}
+                  <MoreMenu />
                 </Link>
 
                 {/* Envelope Icon */}
@@ -338,7 +340,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
 
 
                 {/* Plus Icon */}
-                <Link href="#" className="btn btn-ghost btn-sm p-0">
+                <Link href="#" className="btn btn-ghost btn-sm p-0 add_new_task"  data-bs-toggle="modal"
+          data-bs-target="#addTaskModal">
                   <svg width="11" height="10" viewBox="0 0 11 10" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M0.665039 4.66406H9.66504H0.665039ZM5.16504 0.664062V8.66406V0.664062Z" fill="#D9D9D9" />
                     <path d="M0.665039 4.66406H9.66504M5.16504 0.664062V8.66406" stroke="#474747" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round" />
@@ -507,7 +510,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           </div>
 
           {/* Upgrade Button */}
-          <button
+          <button className="upgrade-btn"
             style={{
               backgroundColor: "#8e7cc3",
               color: "white",
@@ -547,58 +550,45 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           <div style={{ borderBottom: "1px solid #f0f0f0", margin: "10px 0" }}></div>
 
           {/* Action Buttons */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", margin: "10px 0" }}>
-            <button
-              className="btn btn-sm w-100"
-              style={{
-                backgroundColor: "#f5f5f5",
-                border: "1px solid #e0e0e0",
-                cursor: "pointer",
-                padding: "8px 12px",
-              }}
-            >
-              <i className="bi bi-grid-3x2 me-2"></i>
-             Options
-            </button>
+          <div style={{ display: "flex", gap: "10px", margin: "10px 0" }}>
+          <div className="mob-notify">
+            <MoreMenu />
+          </div>
+             
+            
+            
 
-            <button
-              className="btn btn-sm w-100"
-              style={{
-                backgroundColor: "#f5f5f5",
-                border: "1px solid #e0e0e0",
-                cursor: "pointer",
-                padding: "8px 12px",
-              }}
-            >
-              <i className="bi bi-envelope me-2"></i>
-             Mail
-            </button>
+           
+             <Link href="/dashboard/reporting"className="btn btn-ghost btn-sm p-0">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7.25 2.75V7.25M5 4.4375V7.25M2.75 6.125V7.25M1.625 9.5H8.375C8.99632 9.5 9.5 8.99632 9.5 8.375V1.625C9.5 1.00368 8.99632 0.5 8.375 0.5H1.625C1.00368 0.5 0.5 1.00368 0.5 1.625V8.375C0.5 8.99632 1.00368 9.5 1.625 9.5Z" stroke="#7B224D" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
 
-            <button
-              className="btn btn-sm w-100"
-              style={{
-                backgroundColor: "#f5f5f5",
-                border: "1px solid #e0e0e0",
-                cursor: "pointer",
-                padding: "8px 12px",
-              }}
-            >
-              <i className="bi bi-image me-2"></i>
-             Notifications
-            </button>
+                </Link>
 
-            <button
-              className="btn btn-sm w-100"
-              style={{
-                backgroundColor: "#f5f5f5",
-                border: "1px solid #e0e0e0",
-                cursor: "pointer",
-                padding: "8px 12px",
-              }}
-            >
-              <i className="bi bi-emoji-smile me-2"></i>
-              Add Task
-            </button>
+          
+
+          
+             {/* Image Icon */}
+                <Link href="#" className="btn btn-ghost btn-sm p-0">
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M0.5 2L4.4453 4.6302C4.7812 4.85413 5.2188 4.85413 5.5547 4.6302L9.5 2M1.5 7.5H8.5C9.05228 7.5 9.5 7.05228 9.5 6.5V1.5C9.5 0.947715 9.05228 0.5 8.5 0.5H1.5C0.947715 0.5 0.5 0.947715 0.5 1.5V6.5C0.5 7.05228 0.947715 7.5 1.5 7.5Z" stroke="#DA53FF" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </Link>
+                <div className="mob-notify">
+          <NotificationDropdown />
+
+                </div>
+
+           {/* Plus Icon */}
+                <Link href="#" className="btn btn-ghost btn-sm p-0 add_new_task"  data-bs-toggle="modal"
+          data-bs-target="#addTaskModal">
+                  <svg width="11" height="10" viewBox="0 0 11 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M0.665039 4.66406H9.66504H0.665039ZM5.16504 0.664062V8.66406V0.664062Z" fill="#D9D9D9" />
+                    <path d="M0.665039 4.66406H9.66504M5.16504 0.664062V8.66406" stroke="#474747" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+
+                </Link>
 {/* 
             <button
               className="btn btn-sm w-100"
@@ -658,6 +648,58 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           </button> */}
         </div>
       )}
+
+
+
+       {/* Add Task Modal */}
+      <div className="modal fade" id="addTaskModal" tabIndex={-1}>
+        <div className="modal-dialog">
+          <div className="modal-content p-4">
+            <h5 className="mb-3">Add Task to ""</h5>
+            <input
+              className="form-control mb-2"
+              placeholder="Title"
+              value={""}
+              // onChange={(e) => setNewTask((t) => ({ ...t, title: e.target.value }))}
+            />
+            <input
+              type="date"
+              className="form-control mb-2"
+              value={"newTask.due_date"}
+              // onChange={(e) => setNewTask((t) => ({ ...t, due_date: e.target.value }))}
+            />
+            <select
+              className="form-select mb-2"
+              value={"newTask.priority"}
+              // onChange={(e) => setNewTask((t) => ({ ...t, priority: e.target.value }))}
+            >
+              {/* {priorityOptions.map((p) => (
+                <option key={p}>{p}</option>
+              ))} */}
+             
+                <option>aaaaa</option>
+            
+            </select>
+          
+            <select
+              className="form-select mb-2"
+              value={"newTask.assignee"}
+              // onChange={(e) => setNewTask((t) => ({ ...t, assignee: e.target.value }))}
+            >
+              <option value="">Unassigned</option>
+              <option>aaaaa</option>
+            </select>
+            <div className="d-flex justify-content-end gap-2">
+              <button className="g-btn h-36 rounded-3" data-bs-dismiss="modal">
+                Close
+              </button>
+              <button className="g-btn h-36 rounded-3" >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </nav>
   );
 }

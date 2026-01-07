@@ -245,7 +245,7 @@ export default function SignupPage(): JSX.Element {
     
     
           </header>
-    <section className="login-sec">
+    <section className="login-sec px-3 px-lg-0">
       <div className="login-container sign-up-container container">
         <div className="login-card">
           <Image className="login-logo img-fluid" src="/assets/images/new/login-logo.png" alt="logo" width={200} height={80} />
@@ -418,6 +418,17 @@ export default function SignupPage(): JSX.Element {
           .login-image-wrap {
             display: none;
           }
+             .login-card {
+  
+    max-width: 100%;
+   padding: 10px;
+    width: 100%;
+}
+    .login-container input.form-control {
+    max-width: 100%;
+    width: 100%;
+   
+}
         }
       `}</style>
     </section>

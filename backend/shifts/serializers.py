@@ -252,3 +252,5 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = tuple(fields)
+
+

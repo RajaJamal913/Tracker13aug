@@ -251,24 +251,48 @@ class AttendanceCheckInAPIView(APIView):
 
 class AttendanceListAPIView(generics.ListAPIView):
     """
-    GET /api/attendance/?date=YYYY-MM-DD  -> list attendance records for current user
-    If no date is provided, defaults to today (server date).
+    GET /api/attendance/?date=YYYY-MM-DD&shift=<shift_id>
+
+    - Shift creator → sees attendance of ALL members
+    - Normal member → sees ONLY their attendance
     """
     serializer_class = AttendanceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        date_str = self.request.query_params.get("date")
+        shift_id = self.request.query_params.get("shift")
+
+        from django.utils.dateparse import parse_date
+
+        d = parse_date(date_str) if date_str else timezone.localdate()
+
         try:
             member = Member.objects.get(user=self.request.user)
         except Member.DoesNotExist:
             return Attendance.objects.none()
 
-        date_str = self.request.query_params.get("date", None)
-        if date_str:
-            from django.utils.dateparse import parse_date
+        qs = Attendance.objects.filter(date=d)
 
-            d = parse_date(date_str)
-        else:
-            # use today's date in server timezone; optionally convert to member timezone if needed
-            d = timezone.localdate()
-        return Attendance.objects.filter(member=member, date=d).order_by("-created_at")
+        if shift_id:
+            try:
+                shift = Shift.objects.get(id=shift_id)
+            except Shift.DoesNotExist:
+                return Attendance.objects.none()
+
+            # ✅ SHIFT CREATOR → SEE ALL
+            if shift.created_by == self.request.user:
+                return qs.filter(shift=shift).select_related(
+                    "member", "member__user", "shift"
+                )
+
+            # ✅ MEMBER → SEE ONLY SELF
+            return qs.filter(
+                shift=shift,
+                member=member
+            ).select_related("member", "member__user", "shift")
+
+        # fallback (no shift param)
+        return qs.filter(member=member).select_related(
+            "member", "member__user", "shift"
+        )

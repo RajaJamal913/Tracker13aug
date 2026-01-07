@@ -85,8 +85,12 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
     };
   }, []);
 
-  // Function to check if a link is active
+  // Function to check if a link is active - FIXED
   const isLinkActive = (href: string) => {
+    if (href === "/dashboard") {
+      // For dashboard, only mark as active if it's exactly /dashboard
+      return pathname === "/dashboard";
+    }
     return pathname === href || pathname?.startsWith(href + "/");
   };
 
@@ -169,7 +173,6 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
   };
 
   return (
- 
     <aside className="g-scroll text-white px-3 position-relative d-flex flex-column gap-0">
       <button className="sidebar_switch_icon">
         {/*  */}
@@ -203,7 +206,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
         <nav className="g-scroll mt-1 pe-1">
           <ul className="space-y-2 p-0">
             <li>
-              <small className="fw-medium mb-4" style={{ color: "#7A8A9F" }}>WORKSPACE</small>
+              <small className="fw-medium mb-4 ps-2" style={{ color: "#7A8A9F" }}>WORKSPACE</small>
             </li>
             
             {/* Dashboard Link */}
@@ -239,12 +242,14 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             
            
             
-          
-            
-          
 
             {/* Reports Dropdown */}
-                  <li className="nav-link p-2 d-flex align-items-center gap-2 transition-all">
+            <li className={`nav-link p-2 d-flex align-items-center gap-2 transition-all ${getDropdownActiveClass("reports", [
+              "/dashboard/tracked-hours",
+              "/dashboard/timeline",
+              "/dashboard/attendance",
+              "/dashboard/activity-level"
+            ])}`}>
               <FaChartBar />
               <button
                 onClick={() => toggleMenu("reports")}
@@ -252,43 +257,39 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               >
                 <div className="d-flex justify-content-between align-items-center w-100 s-s-b">
                   <span>Reporting Feature</span>
-
                 </div>
                 <FaChevronDown
                   className={`transition-transform ${openMenus["reports"] ? "rotate-180" : ""}`}
                 />
               </button>
-
             </li>
             {openMenus["reports"] && (
               <ul className="pl-4 space-y-3">
-                <li className="p-2 d-flex align-items-center gap-2 transition-all nav-link">
-                  <Link href="/dashboard/tracked-hours" className="underline text-blue">
+                <li className={`p-2 d-flex align-items-center gap-2 transition-all nav-link ${getActiveClass("/dashboard/tracked-hours")}`}>
+                  <Link href="/dashboard/tracked-hours" className="d-flex align-items-center gap-2">
                     <FaClock />
                     <span>Tracked Hours</span>
                   </Link>
                 </li>
-                <li className="p-2 d-flex align-items-center gap-2 transition-all nav-link">
-                  <Link href="/dashboard/timeline" className="underline text-blue">
+                <li className={`p-2 d-flex align-items-center gap-2 transition-all nav-link ${getActiveClass("/dashboard/timeline")}`}>
+                  <Link href="/dashboard/timeline" className="d-flex align-items-center gap-2">
                     <FaStream />
                     <span>Timeline</span>
                   </Link>
                 </li>
-                <li className="p-2 d-flex align-items-center gap-2 transition-all nav-link">
-                  <Link href="/dashboard/attendance" className="underline text-blue">
+                <li className={`p-2 d-flex align-items-center gap-2 transition-all nav-link ${getActiveClass("/dashboard/attendance")}`}>
+                  <Link href="/dashboard/attendance" className="d-flex align-items-center gap-2">
                     <FaClipboardList />
                     <span>Attendance</span>
                   </Link>
                 </li>
-                <li className="p-2 d-flex align-items-center gap-2 transition-all nav-link">
-                  <Link href="/dashboard/activity-level" className="underline text-blue">
+                <li className={`p-2 d-flex align-items-center gap-2 transition-all nav-link ${getActiveClass("/dashboard/activity-level")}`}>
+                  <Link href="/dashboard/activity-level" className="d-flex align-items-center gap-2">
                     <FaChartBar />
                     <span>Activity Level</span>
                   </Link>
                 </li>
-
               </ul>
-
             )}
 
        
@@ -316,25 +317,25 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             {openMenus["statistics"] && (
               <ul className="pl-6 space-y-2">
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/reports/statistics/activity-description")}`}>
-                  <Link href="/dashboard/reports/statistics/activity-description" className="underline text-blue">
+                  <Link href="/dashboard/reports/statistics/activity-description" className="d-flex items-center gap-2">
                     <FaFileAlt />
                     <span>Activity Description</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/reports/statistics/apps-websites")}`}>
-                  <Link href="/dashboard/reports/statistics/apps-websites" className="underline text-blue">
+                  <Link href="/dashboard/reports/statistics/apps-websites" className="d-flex items-center gap-2">
                     <FaGlobe />
                     <span>Apps & Websites</span>
                   </Link>
                 </li>
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-alll nav-link ${getActiveClass("/dashboard/reports/statistics/tasks")}`}>
-                  <Link href="/dashboard/reports/statistics/tasks" className="underline text-blue">
+                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/reports/statistics/tasks")}`}>
+                  <Link href="/dashboard/reports/statistics/tasks" className="d-flex items-center gap-2">
                     <FaTasks />
-                    <span> Tasks</span>
+                    <span>Tasks</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/reports/statistics/all-reports")}`}>
-                  <Link href="/dashboard/reports/statistics/all-reports" className="underline text-blue">
+                  <Link href="/dashboard/reports/statistics/all-reports" className="d-flex items-center gap-2">
                     <FaFile />
                     <span>All Reports</span>
                   </Link>
@@ -342,59 +343,15 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               </ul>
             )}
 
-            {/* People Dropdown */}
-            <li className={`hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none ${getDropdownActiveClass("people", [
-              "/dashboard/members-new",
-              "/dashboard/people/teams",
-              "/dashboard/people/titles",
-              "/dashboard/people/project-viewers"
-            ])}`}>
-              <button onClick={() => toggleMenu("people")} className="d-flex justify-content-between align-items-center w-100">
-                <FaUsers />
-                <div className="d-flex justify-content-between align-items-center w-100 s-s-b">
-                  <span>People</span>
-                  <FaChevronDown
-                    className={`transition-transform ${openMenus["people"] ? "rotate-180" : ""}`}
-                  />
-                </div>
-              </button>
-            </li>
+          
 
-            {openMenus["people"] && (
-              <ul className="pl-6 space-y-2">
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all d-flex justify-content-between align-items-center gap-2 nav-link ${getActiveClass("/dashboard/members-new")}`}>
-                  <FaUser />
-                  <Link href="/dashboard/members-new" className="underline text-blue">
-                    Member
-                  </Link>
-                </li>
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/people/teams")}`}>
-                  <FaUsersCog />
-                  <Link href="/dashboard/people/teams" className="underline text-blue">
-                    Team
-                  </Link>
-                </li>
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/people/titles")}`}>
-                  <FaIdBadge />
-                  <Link href="/dashboard/people/titles" className="underline text-blue">
-                    Title
-                  </Link>
-                </li>
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/people/project-viewers")}`}>
-                  <FaEye />
-                  <Link href="/dashboard/people/project-viewers" className="underline text-blue">
-                    Project Viewers
-                  </Link>
-                </li>
-              </ul>
-            )}
-            
+          
             <li>
               <div className="divider my-3"></div>
             </li>
             
             <li>
-              <small className="fw-medium mb-4" style={{ color: "#7A8A9F" }}>PEOPLE</small>
+              <small className="fw-medium mb-4 ps-2" style={{ color: "#7A8A9F" }}>PEOPLE</small>
             </li>
 
             {/* Realtime Monitoring Link */}
@@ -457,33 +414,33 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             {openMenus["timeOff"] && (
               <ul className="pl-6 space-y-2">
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/time-off/holidays")}`}>
-                  <FaUmbrellaBeach />
-                  <Link href="/dashboard/time-off/holidays" className="underline text-blue">
-                    Holidays
+                  <Link href="/dashboard/time-off/holidays" className="d-flex items-center gap-2">
+                    <FaUmbrellaBeach />
+                    <span>Holidays</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/time-off/leaves")}`}>
-                  <FaSuitcaseRolling />
-                  <Link href="/dashboard/time-off/leaves" className="underline text-blue">
-                    Leaves
+                  <Link href="/dashboard/time-off/leaves" className="d-flex items-center gap-2">
+                    <FaSuitcaseRolling />
+                    <span>Leaves</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/time-off/leave-balance")}`}>
-                  <FaBalanceScale />
-                  <Link href="/dashboard/time-off/leave-balance" className="underline text-blue">
-                    Leave Balance
+                  <Link href="/dashboard/time-off/leave-balance" className="d-flex items-center gap-2">
+                    <FaBalanceScale />
+                    <span>Leave Balance</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/time-off/request")}`}>
-                  <FaCalendarCheck />
-                  <Link href="/dashboard/time-off/request" className="underline text-blue">
-                    Request Time Off
+                  <Link href="/dashboard/time-off/request" className="d-flex items-center gap-2">
+                    <FaCalendarCheck />
+                    <span>Request Time Off</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/time-off/calendar")}`}>
-                  <FaRegCalendarAlt />
-                  <Link href="/dashboard/time-off/calendar" className="underline text-blue">
-                    Calendar
+                  <Link href="/dashboard/time-off/calendar" className="d-flex items-center gap-2">
+                    <FaRegCalendarAlt />
+                    <span>Calendar</span>
                   </Link>
                 </li>
               </ul>
@@ -494,7 +451,7 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
             </li>
             
             <li>
-              <small className="fw-medium mb-4" style={{ color: "#7A8A9F" }}>SECURITY</small>
+              <small className="fw-medium mb-4 ps-2" style={{ color: "#7A8A9F" }}>SECURITY</small>
             </li>
 
             {/* Security Dropdown */}
@@ -504,56 +461,27 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               "/dashboard/monitoring/productivity"
             ])}`} style={{ color: "#4a5569" }}>
               <FaEye />
-              <button onClick={() => toggleMenu("monitoring")} className="flex-1 text-left text-blue" style={{ fontSize: "13px" }}>
-                Security Feature
+              <button onClick={() => toggleMenu("monitoring")} className="flex-1 text-left text-blue d-flex justify-content-between align-items-center w-100" style={{ fontSize: "13px" }}>
+                <span>Security Feature</span>
+                <FaChevronDown
+                  className={`transition-transform ${openMenus["monitoring"] ? "rotate-180" : ""}`}
+                />
               </button>
-              <FaChevronDown
-                className={`transition-transform ${openMenus["monitoring"] ? "rotate-180" : ""}`}
-              />
             </li>
 
             {openMenus["monitoring"] && (
               <ul className="pl-6 space-y-2">
                 <li className={`p-2 d-flex align-items-center gap-2 transition-all nav-link ${getActiveClass("/dashboard/2fa")}`}>
-                  <Si2Fas />
-                  <Link href="/dashboard/2fa" className="underline">
-                    2 Factor Authentication
+                  <Link href="/dashboard/2fa" className="d-flex align-items-center gap-2">
+                    <Si2Fas />
+                    <span>2 Factor Authentication</span>
                   </Link>
                 </li>
               </ul>
             )}
 
-            {/* Monitoring Dropdown */}
-            <li className={`hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all d-none ${getDropdownActiveClass("monitoring", [
-              "/dashboard/2fa",
-              "/dashboard/monitoring/daily-activity",
-              "/dashboard/monitoring/productivity"
-            ])}`}>
-              <FaEye />
-              <button onClick={() => toggleMenu("monitoring")} className="flex-1 text-left text-blue">
-                Monitoring
-              </button>
-              <FaChevronDown
-                className={`transition-transform ${openMenus["monitoring"] ? "rotate-180" : ""}`}
-              />
-            </li>
-
-            {openMenus["monitoring"] && (
-              <ul className="pl-6 space-y-2">
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/monitoring/daily-activity")}`}>
-                  <FaChartLine />
-                  <Link href="/dashboard/monitoring/daily-activity" className="underline text-blue">
-                    Daily Activity
-                  </Link>
-                </li>
-                <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/monitoring/productivity")}`}>
-                  <FaTachometerAlt />
-                  <Link href="/dashboard/monitoring/productivity" className="underline text-blue">
-                    Productivity
-                  </Link>
-                </li>
-              </ul>
-            )}
+       
+         
 
             {/* Projects Dropdown */}
             <li className={`d-none hover:bg-white hover:text-black p-2 flex items-center gap-2 transition-all ${getDropdownActiveClass("projects", [
@@ -563,38 +491,38 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               "/dashboard/projects/archive"
             ])}`}>
               <FaProjectDiagram />
-              <button onClick={() => toggleMenu("projects")} className="flex-1 text-left text-blue">
-                Projects
+              <button onClick={() => toggleMenu("projects")} className="flex-1 text-left text-blue d-flex justify-content-between align-items-center w-100">
+                <span>Projects</span>
+                <FaChevronDown
+                  className={`transition-transform ${openMenus["projects"] ? "rotate-180" : ""}`}
+                />
               </button>
-              <FaChevronDown
-                className={`transition-transform ${openMenus["projects"] ? "rotate-180" : ""}`}
-              />
             </li>
 
             {openMenus["projects"] && (
               <ul className="pl-6 space-y-2">
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/projects/active")}`}>
-                  <FaFolderOpen />
-                  <Link href="/dashboard/projects/active" className="underline text-blue">
-                    Active Projects
+                  <Link href="/dashboard/projects/active" className="d-flex items-center gap-2">
+                    <FaFolderOpen />
+                    <span>Active Projects</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/projects/group")}`}>
-                  <FaLayerGroup />
-                  <Link href="/dashboard/projects/group" className="underline text-blue">
-                    Projects Group
+                  <Link href="/dashboard/projects/group" className="d-flex items-center gap-2">
+                    <FaLayerGroup />
+                    <span>Projects Group</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/projects/contracts")}`}>
-                  <FaFileContract />
-                  <Link href="/dashboard/projects/contracts" className="underline text-blue">
-                    Contracts
+                  <Link href="/dashboard/projects/contracts" className="d-flex items-center gap-2">
+                    <FaFileContract />
+                    <span>Contracts</span>
                   </Link>
                 </li>
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/projects/archive")}`}>
-                  <FaArchive />
-                  <Link href="/dashboard/projects/archive" className="underline text-blue">
-                    Archive
+                  <Link href="/dashboard/projects/archive" className="d-flex items-center gap-2">
+                    <FaArchive />
+                    <span>Archive</span>
                   </Link>
                 </li>
               </ul>
@@ -607,21 +535,21 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
               <FaCommentAlt />
               <button
                 onClick={() => toggleMenu("communication")}
-                className="flex-1 text-left"
+                className="flex-1 text-left d-flex justify-content-between align-items-center w-100"
               >
-                Communication
+                <span>Communication</span>
+                <FaChevronDown
+                  className={`transition-transform ${openMenus["communication"] ? "rotate-180" : ""}`}
+                />
               </button>
-              <FaChevronDown
-                className={`transition-transform ${openMenus["communication"] ? "rotate-180" : ""}`}
-              />
             </li>
             
             {openMenus["communication"] && (
               <ul className="pl-6 space-y-1">
                 <li className={`flex items-center gap-2 p-2 hover:bg-white hover:text-black transition-all nav-link ${getActiveClass("/dashboard/communication/chat")}`}>
-                  <FaComments />
-                  <Link href="/dashboard/communication/chat" className="underline text-blue">
-                    Chat
+                  <Link href="/dashboard/communication/chat" className="d-flex items-center gap-2">
+                    <FaComments />
+                    <span>Chat</span>
                   </Link>
                 </li>
               </ul>
@@ -638,11 +566,5 @@ export default function Sidebar({ collapsed, toggleSidebar }: SidebarProps) {
         </nav>
       </div>
     </aside>
-
-
-
-   
-
-    
   );
 }

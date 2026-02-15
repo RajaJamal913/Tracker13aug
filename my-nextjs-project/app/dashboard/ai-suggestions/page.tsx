@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from 'react'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000'
+
 export default function AiSuggestion() {
   // fallback static list (used only if fetch fails)
   const fallbackCardDataList = [
@@ -68,10 +70,10 @@ export default function AiSuggestion() {
       setLoading(true)
       setError(null)
 
-      // primary and fallback endpoints (adjust if your API is mounted differently)
+      // use API_BASE_URL first, then try relative path as fallback (useful with proxy setups)
       const endpoints = [
-        'http://127.0.0.1:8000/api/members/',
-
+        `${API_BASE_URL}/api/members/`,
+        '/api/members/',
       ]
 
       for (const url of endpoints) {
@@ -79,11 +81,14 @@ export default function AiSuggestion() {
           const res = await fetch(url, {
             headers: token ? { Authorization: `Token ${token}` } : undefined,
           })
+
           if (res.status === 404) {
             // try next endpoint
             continue
           }
+
           if (!res.ok) throw new Error(`Failed to fetch members: ${res.status}`)
+
           const json = await res.json()
           if (!cancelled) {
             // Expecting an array of Member objects with: id, username, role, experience, skills, developer_type
@@ -93,7 +98,6 @@ export default function AiSuggestion() {
               // in case of paginated DRF response
               setMembers(json.results)
             } else {
-              // unknown shape -> try to coerce
               setMembers(Array.isArray(json) ? json : [])
             }
             setLoading(false)

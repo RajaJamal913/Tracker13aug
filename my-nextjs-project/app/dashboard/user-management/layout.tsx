@@ -66,7 +66,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     <>
       <div className="um-main-wrapper pb-5">
 
-        <div className="d-flex justify-content-end pe-3 um-canvas-toggle-wrapper mb-3">
+        <div className="d-flex justify-content-end pe-3 um-canvas-toggle-wrapper mb-3 d-lg-none d-block">
           <a className="um-canvas-toggle" data-bs-toggle="offcanvas" href="#offcanvasExample" role="button" aria-controls="offcanvasExample">
            <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 512 512" height="200px" width="200px" xmlns="http://www.w3.org/2000/svg" style={{ width: "20px;",
     height: "25px;",

@@ -17,14 +17,14 @@ interface Team {
 
 export default function TeamsPage(): JSX.Element {
   // single source of truth for backend host
-  const API_HOST =
+  const API_BASE_URL =
     typeof window !== "undefined"
       ? process.env.NEXT_PUBLIC_API_HOST ?? "http://127.0.0.1:8000"
       : process.env.NEXT_PUBLIC_API_HOST ?? "http://127.0.0.1:8000";
 
   // convenience endpoints (members fetch will append ?invited_by_me=1 below)
-  const MEMBERS_URL = `${API_HOST}/api/members/`;
-  const TEAMS_URL = `${API_HOST}/api/teams/`;
+  const MEMBERS_URL = `${API_BASE_URL}/api/members/`;
+  const TEAMS_URL = `${API_BASE_URL}/api/teams/`;
 
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]); // store ids
@@ -270,7 +270,7 @@ export default function TeamsPage(): JSX.Element {
                   ))}
                 </div>
               </div>
-              <button className="btn btn-sm btn-danger" onClick={() => handleDeleteTeam(team.id)}>
+              <button className="g-btn-red" onClick={() => handleDeleteTeam(team.id)}>
                 Delete
               </button>
             </li>

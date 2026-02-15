@@ -16,7 +16,7 @@ import { MultiSelect } from 'primereact/multiselect';
 import dayjs from 'dayjs';
 
 // Base URL for API (ensure this includes /api if your backend needs it)
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function AttendancePage() {
   // Tab state
@@ -228,12 +228,12 @@ export default function AttendancePage() {
   // fetchCurrentUser: returns {id?, username?} from several endpoints and localStorage fallback
   const fetchCurrentUser = async () => {
     const tryPaths = [
-      `${API_BASE}/api/users/me/`,
-      `${API_BASE}/api/whoami/`,
-      `${API_BASE}/api/auth/user/`,
-      `${API_BASE}/api/user/`,
-      `${API_BASE}/api/profile/`,
-      `${API_BASE}/api/accounts/me/`,
+      `${API_BASE_URL}/api/users/me/`,
+      `${API_BASE_URL}/api/whoami/`,
+      `${API_BASE_URL}/api/auth/user/`,
+      `${API_BASE_URL}/api/user/`,
+      `${API_BASE_URL}/api/profile/`,
+      `${API_BASE_URL}/api/accounts/me/`,
     ];
     for (const url of tryPaths) {
       try {
@@ -309,7 +309,7 @@ export default function AttendancePage() {
 
   // 1️⃣ Load members
   useEffect(() => {
-    fetch(`${API_BASE}/api/members/`, {
+    fetch(`${API_BASE_URL}/api/members/`, {
       headers: makeHeaders(),
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
@@ -327,7 +327,7 @@ export default function AttendancePage() {
 
   const fetchAssignedShifts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/shifts/assigned/`, { headers: makeHeaders() });
+      const res = await fetch(`${API_BASE_URL}/api/shifts/assigned/`, { headers: makeHeaders() });
       console.debug('fetchAssignedShifts status', res.status);
       if (!res.ok) {
         setAssignedShifts([]);
@@ -358,7 +358,7 @@ export default function AttendancePage() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/shifts/notifications/`, { headers: makeHeaders() });
+      const res = await fetch(`${API_BASE_URL}/api/shifts/notifications/`, { headers: makeHeaders() });
       console.debug('fetchNotifications status', res.status);
       if (!res.ok) return setNotifications([]);
       const data = await res.json();
@@ -378,8 +378,8 @@ export default function AttendancePage() {
   const fetchAttendanceForShift = async (date = TODAY, shiftId?: number) => {
     try {
       const url = shiftId
-        ? `${API_BASE}/api/attendance/?date=${date}&shift=${shiftId}`
-        : `${API_BASE}/api/attendance/?date=${date}`;
+        ? `${API_BASE_URL}/api/attendance/?date=${date}&shift=${shiftId}`
+        : `${API_BASE_URL}/api/attendance/?date=${date}`;
       const res = await fetch(url, { headers: makeHeaders() });
       console.debug('fetchAttendanceForShift', url, 'status', res.status);
       if (!res.ok) return [];
@@ -447,12 +447,12 @@ export default function AttendancePage() {
     setLoading(true);
     setError(null);
 
-    const dailyFetch = fetch(`${API_BASE}/api/tracker/?type=hours&range=day`, {
+    const dailyFetch = fetch(`${API_BASE_URL}/api/tracker/?type=hours&range=day`, {
       headers: makeHeaders(),
     }).then(r => r.ok ? r.json() : Promise.reject(r.statusText));
 
     const shiftsFetch = fetch(
-      `${API_BASE}/api/shifts/tracked/?date=${TODAY}`,
+      `${API_BASE_URL}/api/shifts/tracked/?date=${TODAY}`,
       { headers: makeHeaders() }
     ).then(r => r.ok ? r.json() : Promise.reject(r.statusText));
 
@@ -489,7 +489,7 @@ export default function AttendancePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/shifts/`, { headers: makeHeaders() });
+      const res = await fetch(`${API_BASE_URL}/api/shifts/`, { headers: makeHeaders() });
       console.debug('fetchShifts status', res.status);
       if (!res.ok) {
         setShiftsData([]);
@@ -564,7 +564,7 @@ export default function AttendancePage() {
 
     setDeleteLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/shifts/${deleteShiftId}/`, {
+      const res = await fetch(`${API_BASE_URL}/api/shifts/${deleteShiftId}/`, {
         method: 'DELETE',
         headers: makeHeaders(),
       });
@@ -601,8 +601,8 @@ export default function AttendancePage() {
       };
 
       const url = modalType === 'create'
-        ? `${API_BASE}/api/shifts/`
-        : `${API_BASE}/api/shifts/${form.id}/`;
+        ? `${API_BASE_URL}/api/shifts/`
+        : `${API_BASE_URL}/api/shifts/${form.id}/`;
 
       const method = modalType === 'create' ? 'POST' : 'PUT';
 
@@ -831,7 +831,7 @@ export default function AttendancePage() {
 
       console.debug('Checkin payload ->', payload);
 
-      const res = await fetch(`${API_BASE}/api/attendance/checkin/`, {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/checkin/`, {
         method: 'POST',
         headers: makeHeaders(),
         body: JSON.stringify(payload),

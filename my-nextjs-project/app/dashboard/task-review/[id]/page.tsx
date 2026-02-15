@@ -26,7 +26,7 @@ import {
  *  POST /api/tasksai/:id/reviews/ -> { action, comment }
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 const TASK_LIST_PATH = "/api/tasksai/";
 
 type TaskShape = Record<string, any>;
@@ -53,7 +53,7 @@ export default function ReviewTasksPage(): JSX.Element {
   // fetch helper (tries Token then Bearer if token exists; falls back to cookie fetch)
   const fetchWithAuth = useCallback(async (path: string, opts: RequestInit = {}) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const url = path.startsWith("http") ? path : API_BASE + path;
+    const url = path.startsWith("http") ? path : API_BASE_URL + path;
 
     if (token) {
       let lastRes: Response | null = null;
@@ -131,7 +131,7 @@ export default function ReviewTasksPage(): JSX.Element {
       if (taskId) {
         // fetch single task
         // console.log("[ReviewTasksPage] fetch single task:", taskId);
-        res = await fetchWithAuth(`${API_BASE}/api/tasksai/${taskId}/`, { method: "GET", signal });
+        res = await fetchWithAuth(`${API_BASE_URL}/api/tasksai/${taskId}/`, { method: "GET", signal });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
           throw new Error(`Load failed: ${res.status}${txt ? ` — ${txt}` : ""}`);
@@ -184,7 +184,7 @@ export default function ReviewTasksPage(): JSX.Element {
     const comment = (commentDrafts[key] ?? "").trim();
 
     try {
-      const res = await fetchWithAuth(`${API_BASE}/api/tasksai/${taskId}/reviews/`, {
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/tasksai/${taskId}/reviews/`, {
         method: "POST",
         body: JSON.stringify({ action, comment }),
       });

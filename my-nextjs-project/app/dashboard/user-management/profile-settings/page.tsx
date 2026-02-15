@@ -44,7 +44,7 @@ export default function ProfileTabs() {
   // ─── Initial data fetch ──────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
-      fetch(`${API_BASE_URL}/api/auth/profile/`, {
+      fetch(`${API_BASE_URL}/api/auth/profile/personal/`, {
         method: 'GET',
         credentials: 'include',
         headers: { ...authHeader(), ...csrfHeader() },
@@ -52,7 +52,7 @@ export default function ProfileTabs() {
         if (!res.ok) throw new Error('Failed to load profile');
         return res.json();
       }),
-      fetch(`${API_BASE_URL}/api/auth/personal/`, {
+      fetch(`${API_BASE_URL}/api/auth/profile/personal/`, {
         method: 'GET',
         credentials: 'include',
         headers: { ...authHeader(), ...csrfHeader() },
@@ -80,7 +80,7 @@ export default function ProfileTabs() {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/profile/`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/personal/profile/`, {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -103,7 +103,7 @@ export default function ProfileTabs() {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/personal/`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/personal/personal/`, {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -131,7 +131,7 @@ export default function ProfileTabs() {
     e.preventDefault();
     setSaving(true); setErrorMessage(null); setSuccessMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/password/`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/password/change/`, {
         method: 'POST',
         credentials: 'include',
         headers: {

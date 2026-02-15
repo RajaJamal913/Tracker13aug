@@ -518,14 +518,14 @@ export default function Home() {
   // If totally no token
   if (!token) {
     return (
-      <div className="container py-5">
+      <div className="container-fluid py-5">
         <Alert variant="warning">No token found. Please log in.</Alert>
       </div>
     )
   }
 
   return (
-    <div className="container">
+    <div className="container-fluid">
       <div className="row mb-3 g-4">
         <div className="col-lg-12">
           <Card className="p-3">

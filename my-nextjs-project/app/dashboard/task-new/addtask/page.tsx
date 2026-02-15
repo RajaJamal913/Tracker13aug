@@ -728,7 +728,7 @@ export default function SmartTaskMgt(): JSX.Element {
           {saveError && <div className="text-danger mb-2">Error: {saveError}</div>}
         </Modal.Body>
         <Modal.Footer>
-          <button className="g-btn-secondary" onClick={() => setShow(false)} disabled={saving}>
+          <button className="g-btn" onClick={() => setShow(false)} disabled={saving}>
             Cancel
           </button>
           <button className="g-btn" onClick={handleSubmit} disabled={saving}>

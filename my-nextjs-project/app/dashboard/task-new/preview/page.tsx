@@ -10,7 +10,7 @@ import { Button, Form, Spinner, Alert } from "react-bootstrap";
 
 const PREVIEW_STORAGE_KEY = "task_preview_items";
 const PREVIEW_PROJECTS_KEY = "task_preview_projects";
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
 
 export default function TasksPreviewPage() {
   const router = useRouter();
@@ -80,9 +80,9 @@ export default function TasksPreviewPage() {
     const fetchMembers = async () => {
       const token = localStorage.getItem("token");
       const endpoints = [
-        `${API_BASE}/members/`,
-        `${API_BASE}/api/members/`,
-        `${API_BASE}/users/members/`,
+        `${API_BASE_URL}/members/`,
+        `${API_BASE_URL}/api/members/`,
+        `${API_BASE_URL}/users/members/`,
       ];
 
       for (const url of endpoints) {
@@ -184,11 +184,11 @@ export default function TasksPreviewPage() {
   async function fetchMembersForAI(): Promise<any[] | null> {
     const token = localStorage.getItem("token");
     const endpoints = [
-      `${API_BASE}/members/`,
-      `${API_BASE}/users/members/`,
-      `${API_BASE}/api/members/`,
-      `${API_BASE}/members`,
-      `${API_BASE}/users/`,
+      `${API_BASE_URL}/members/`,
+      `${API_BASE_URL}/users/members/`,
+      `${API_BASE_URL}/api/members/`,
+      `${API_BASE_URL}/members`,
+      `${API_BASE_URL}/users/`,
     ];
     for (const url of endpoints) {
       try {
@@ -488,7 +488,7 @@ export default function TasksPreviewPage() {
       if (localTask && localTask.ai_chosen_member && localTask.ai_chosen_member.assignedUserId) continue;
 
       try {
-        const url = `${API_BASE}/tasksai/${taskId}/assign/`;
+        const url = `${API_BASE_URL}/tasksai/${taskId}/assign/`;
         const res = await fetch(url, {
           method: "POST",
           headers: {
@@ -514,7 +514,7 @@ export default function TasksPreviewPage() {
 
         const respJson = await res.json().catch(() => null);
         try {
-          const detailUrl = `${API_BASE}/tasksai/${taskId}/`;
+          const detailUrl = `${API_BASE_URL}/tasksai/${taskId}/`;
           const detailRes = await fetch(detailUrl, { headers: token ? { Authorization: `Token ${token}` } : {} });
           if (detailRes.ok) {
             const detail = await detailRes.json();
@@ -594,7 +594,7 @@ export default function TasksPreviewPage() {
 
     if (useBackend) {
       try {
-        const res = await fetch(`${API_BASE}/tasksai/auto-assign/`, {
+        const res = await fetch(`${API_BASE_URL}/tasksai/auto-assign/`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

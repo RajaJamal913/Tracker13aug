@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import "bootstrap/dist/css/bootstrap.min.css";
- const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/api";
+ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/";
+ const API_BASE = `${API_BASE_URL}api/`;
 export default function VerifyCodePage() {
   const DIGITS = 6;
   const [code, setCode] = useState<string[]>(Array(DIGITS).fill(""));

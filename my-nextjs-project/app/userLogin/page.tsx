@@ -23,7 +23,7 @@ export default function LoginPage(): JSX.Element {
     }
   }, []);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
   // Form state
   const [email, setEmail] = useState<string>("");
@@ -61,7 +61,7 @@ export default function LoginPage(): JSX.Element {
   // --- Network helpers ---
   async function attemptLogin(payload: LoginPayload): Promise<AttemptResult> {
     const safePayload: LoginPayload = { email: String(payload.email || ""), password: String(payload.password || ""), ...(payload.code ? { code: String(payload.code) } : {}), ...(payload.invite ? { invite: payload.invite } : {}) };
-    const url = `${API_BASE}/api/twofactor/login-2fa/`;
+    const url = `${API_BASE_URL}/api/twofactor/login-2fa/`;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     const timeoutId = controller ? window.setTimeout(() => controller.abort(), 10000) : undefined;
 
@@ -147,7 +147,7 @@ export default function LoginPage(): JSX.Element {
     if (!token) return;
     try {
       const persistToken = localStorage.getItem("token") || "";
-      const res = await fetch(`${API_BASE}/api/invites/accept/`, {
+      const res = await fetch(`${API_BASE_URL}/api/invites/accept/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

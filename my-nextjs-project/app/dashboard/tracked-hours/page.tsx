@@ -45,7 +45,7 @@ export default function TimeRequestTabs() {
 
   const [showZeroMembers, setShowZeroMembers] = useState<boolean>(true);
 
-  const API_BASE = "http://127.0.0.1:8000/api";
+  const API_BASE_URL = "http://127.0.0.1:8000/api";
 
   // callback passed to FilterMultiSelects
   const handleFilterChange = useCallback((payload: FilterPayload) => {
@@ -156,7 +156,7 @@ export default function TimeRequestTabs() {
           throw new Error("Not authenticated");
         }
         const qs = buildQuery(filters);
-        const res = await fetch(`${API_BASE}/reports/tracked-hours/${qs}`, {
+        const res = await fetch(`${API_BASE_URL}/reports/tracked-hours/${qs}`, {
           method: "GET",
           credentials: "include",
           headers: { "Content-Type": "application/json", Authorization: `Token ${token}` },

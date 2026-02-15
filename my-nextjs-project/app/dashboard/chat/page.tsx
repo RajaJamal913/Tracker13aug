@@ -83,12 +83,12 @@ export default function ChatPage(): JSX.Element {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<number[]>([])
 
   // ---------- API config ----------
-  const API_ROOT = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "")
-  const MEMBERS_API = `${API_ROOT}/api/members/`
-  const DIRECT_MESSAGES_API = `${API_ROOT}/api/chat/direct-messages/`
-  const CONVERSATIONS_API = `${API_ROOT}/api/chat/channels/`
-  const MESSAGES_API = `${API_ROOT}/api/chat/messages/`
-  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || API_ROOT.replace(/^http/, "ws") + "/ws/dm"
+  const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "")
+  const MEMBERS_API = `${API_BASE_URL}/api/members/`
+  const DIRECT_MESSAGES_API = `${API_BASE_URL}/api/chat/direct-messages/`
+  const CONVERSATIONS_API = `${API_BASE_URL}/api/chat/channels/`
+  const MESSAGES_API = `${API_BASE_URL}/api/chat/messages/`
+  const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || API_BASE_URL.replace(/^http/, "ws") + "/ws/dm"
 
   // ---------- auth helpers ----------
   const getLocalToken = (): string | null => (typeof window !== "undefined" ? localStorage.getItem("token") : null)
@@ -97,7 +97,7 @@ export default function ChatPage(): JSX.Element {
     return t ? { Authorization: `Token ${t}` } : {}
   }
 
-  const TOKEN_FETCH_API = `${API_ROOT}/api/auth/token/`
+  const TOKEN_FETCH_API = `${API_BASE_URL}/api/auth/token/`
   const fetchTokenFromServer = async (): Promise<string | null> => {
     try {
       const res = await fetch(TOKEN_FETCH_API, { method: "GET", credentials: "include" })

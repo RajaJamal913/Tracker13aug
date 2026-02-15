@@ -193,7 +193,7 @@ export default function TaskManagementSystem() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE as string) || "http://localhost:8000/api"
+    const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE as string) || "http://localhost:8000/api"
 
     // Load tasks from API on mount (tries tasks/my, tasksai/my, falls back to /tasks/)
     useEffect(() => {
@@ -257,8 +257,8 @@ export default function TaskManagementSystem() {
                 }
 
                 // fetch human and ai endpoints in parallel (handle failures gracefully)
-                const humanEp = `${API_BASE}/tasks/my/`
-                const aiEp = `${API_BASE}/tasksai/my/`
+                const humanEp = `${API_BASE_URL}/tasks/my/`
+                const aiEp = `${API_BASE_URL}/tasksai/my/`
 
                 const [humanRes, aiRes] = await Promise.allSettled([
                     fetch(humanEp, { headers: { "Content-Type": "application/json", Authorization: `Token ${token}` } }),
@@ -295,7 +295,7 @@ export default function TaskManagementSystem() {
                 // If both failed, try fallback to /tasks/
                 if (humanArr.length === 0 && aiArr.length === 0) {
                     try {
-                        const r = await fetch(`${API_BASE}/tasks/`, { headers: { "Content-Type": "application/json", Authorization: `Token ${token}` } })
+                        const r = await fetch(`${API_BASE_URL}/tasks/`, { headers: { "Content-Type": "application/json", Authorization: `Token ${token}` } })
                         if (r.ok) {
                             const j = await r.json()
                             if (Array.isArray(j)) humanArr.push(...j)
@@ -382,7 +382,7 @@ export default function TaskManagementSystem() {
         return () => {
             mounted = false
         }
-    }, [API_BASE])
+    }, [API_BASE_URL])
 
     // Calculate project statistics
     const calculateStats = (): ProjectStats => {
@@ -416,7 +416,7 @@ export default function TaskManagementSystem() {
     const getApiForTask = (task: Task) => {
         const isAi = !!task._isAI || String(task.id).startsWith("ai-")
         const rawId = isAi ? String(task.id).replace(/^ai-/, "") : String(task.id).replace(/^human-/, "")
-        const url = `${API_BASE}/${isAi ? "tasksai" : "tasks"}/${rawId}/`.replace(/\/\/+/g, "/").replace(":/", "://")
+        const url = `${API_BASE_URL}/${isAi ? "tasksai" : "tasks"}/${rawId}/`.replace(/\/\/+/g, "/").replace(":/", "://")
         return { url, isAi, rawId }
     }
 

@@ -7,8 +7,8 @@ import React, { useState, useEffect } from "react";
 import { Dropdown } from "primereact/dropdown";
 
 // Use same API base as ProjectsPage
-const API_ROOT = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-const API_BASE = `${API_ROOT}/api`;
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const API_BASE = `${API_BASE_URL}/api`;
 
 interface Project {
   id: number;

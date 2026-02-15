@@ -19,9 +19,10 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const [username, setUsername] = useState<string>("Loading...");
   const router = useRouter();
   const menu = useRef<Menu>(null);
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/";
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/auth/whoami/", {
+    fetch(`${API_BASE_URL}/api/auth/whoami/`, {
       headers: { Authorization: `Token ${localStorage.getItem("token")}` },
     })
       .then((res) => res.json())

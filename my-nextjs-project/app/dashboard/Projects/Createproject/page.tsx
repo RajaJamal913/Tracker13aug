@@ -228,7 +228,7 @@ export default function ProjectsPage() {
   }));
 
   return (
-    <div className="px-0 py-3 w-full mx-auto rounded-xl ">
+    <div className="px-lg-0 px-3 py-3 w-full mx-auto rounded-xl ">
       <div className="flex justify-between tabContainer profile-settings-tabs-wrapper mb-4">
         <div className="d-flex um-btns-wrap">
           {["Active", "Inactive"].map((tab) => (
@@ -248,7 +248,7 @@ export default function ProjectsPage() {
             <Plus size={16} className="mr-2" /> Create Project
           </button>
 
-          <div className="relative">
+          {/* <div className="relative">
             <button
               onClick={() => setActionMenuOpen(!actionMenuOpen)}
               className="border rounded-2 bg-white flex items-center h-36 px-2"
@@ -265,7 +265,7 @@ export default function ProjectsPage() {
                 </button>
               </div>
             )}
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -314,10 +314,10 @@ export default function ProjectsPage() {
                 <td className="px-4 py-3">${p.budget_estimate}</td>
                 <td className="px-4 py-3">
                   <div className="d-flex flex-wrap gap-2">
-                     <button className="btn btn-primary btn-sm">
+                     <button className="g-btn  btn-sm">
                     Edit
                   </button>
-                  <button className="btn btn-danger btn-sm">
+                  <button className="g-btn-red  btn-sm">
                     Delete
                   </button>
                   </div>
@@ -333,9 +333,9 @@ export default function ProjectsPage() {
       <Dialog open={isModalOpen} onClose={closeModal} className="fixed inset-0 z-50 overflow-y-auto create-project-modal">
         <div className="flex items-center justify-center min-h-screen">
           <div className="fixed inset-0 bg-black opacity-30" />
-          <div className="relative bg-white rounded-xl p-6 w-full max-w-md mx-auto">
+          <div className="relative rounded-xl p-6 w-full max-w-md mx-auto" style={{background:"aliceblue"}}>
             <div className="flex justify-between mb-4">
-              <h2 className="text-lg font-semibold">New Project</h2>
+              <h2 className="modal-title h4">New Project</h2>
               <button onClick={closeModal}>
                 <IoMdClose size={22} />
               </button>
@@ -390,7 +390,7 @@ export default function ProjectsPage() {
 
               {/* Buttons */}
               <div className="d-flex gap-2 justify-content-end">
-                <button type="button" className="g-btn-grey" onClick={closeModal}>
+                <button type="button" className="g-btn" onClick={closeModal}>
                   Cancel
                 </button>
                 <button type="submit" className="g-btn h-36">

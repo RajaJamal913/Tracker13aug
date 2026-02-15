@@ -23,7 +23,7 @@ function buildAuthHeader() {
 }
 
 export default function TwoFASettings(): JSX.Element {
-  const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000").replace(/\/$/, "");
 
   const [qrDataUri, setQrDataUri] = useState<string | null>(null);
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
@@ -51,7 +51,7 @@ export default function TwoFASettings(): JSX.Element {
       // credentials: 'include',
     };
 
-    const url = `${API_BASE}${path}`;
+    const url = `${API_BASE_URL}${path}`;
     const res = await fetch(url, fetchOpts);
 
     // Try parse JSON body when possible
@@ -199,7 +199,7 @@ export default function TwoFASettings(): JSX.Element {
   }, []);
 
   return (
-    <div className="cardWrapper">
+    <div className="cardWrapper mx-3 mx-lg-0">
       <div className="cardHeader d-flex justify-content-start align-items-center p-4">
         <h5 className="cardTitle text-white m-0">Two-Factor Authentication</h5>
       </div>

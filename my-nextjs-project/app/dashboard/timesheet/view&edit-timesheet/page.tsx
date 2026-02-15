@@ -54,7 +54,7 @@ interface CurrentUser {
   is_staff?: boolean;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api";
 
 function getCookie(name: string) {
   if (typeof document === "undefined") return "";
@@ -132,11 +132,11 @@ export default function TimeRequestTabs() {
   // load current user: try a few common endpoints; adjust if your API exposes a different one
   const loadCurrentUser = async () => {
     const endpoints = [
-      `${API_BASE.replace(/\/api\/?$/, "")}/api/users/me/`,
-      `${API_BASE}/users/me/`,
-      `${API_BASE.replace(/\/api\/?$/, "")}/auth/user/`,
-      `${API_BASE}/auth/user/`,
-      `${API_BASE}/whoami/`,
+      `${API_BASE_URL.replace(/\/api\/?$/, "")}/api/users/me/`,
+      `${API_BASE_URL}/users/me/`,
+      `${API_BASE_URL.replace(/\/api\/?$/, "")}/auth/user/`,
+      `${API_BASE_URL}/auth/user/`,
+      `${API_BASE_URL}/whoami/`,
     ];
     const opts = getAuthOptions();
     for (const ep of endpoints) {
@@ -171,7 +171,7 @@ export default function TimeRequestTabs() {
     try {
       const opts = getAuthOptions();
       const fetches = numericTaskIds.map((id) =>
-        fetch(`${API_BASE}/tasks/${id}/`, { ...opts }).then(async (res) => {
+        fetch(`${API_BASE_URL}/tasks/${id}/`, { ...opts }).then(async (res) => {
           if (!res.ok) throw new Error(`task fetch ${id} failed ${res.status}`);
           return res.json();
         })
@@ -193,7 +193,7 @@ export default function TimeRequestTabs() {
     setLoading(true);
     try {
       const opts = getAuthOptions();
-      const res = await fetch(`${API_BASE}/time-requests/`, {
+      const res = await fetch(`${API_BASE_URL}/time-requests/`, {
         method: "GET",
         ...opts,
       });
@@ -215,7 +215,7 @@ export default function TimeRequestTabs() {
   const loadProjects = async () => {
     try {
       const opts = getAuthOptions();
-      const res = await fetch(`${API_BASE}/projects/`, {
+      const res = await fetch(`${API_BASE_URL}/projects/`, {
         ...opts,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
@@ -241,7 +241,7 @@ export default function TimeRequestTabs() {
     (async () => {
       try {
         const opts = getAuthOptions();
-        const res = await fetch(`${API_BASE}/tasks/?project=${formData.project!.id}`, { ...opts });
+        const res = await fetch(`${API_BASE_URL}/tasks/?project=${formData.project!.id}`, { ...opts });
         if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text()}`);
         setTasks(await res.json());
       } catch (e) {
@@ -302,7 +302,7 @@ export default function TimeRequestTabs() {
       description: formData.description,
       status: formData.status,
     };
-    const url = editRequest ? `${API_BASE}/time-requests/${editRequest.id}/` : `${API_BASE}/time-requests/`;
+    const url = editRequest ? `${API_BASE_URL}/time-requests/${editRequest.id}/` : `${API_BASE_URL}/time-requests/`;
     const method = editRequest ? "PATCH" : "POST";
     try {
       const opts = getAuthOptions();
@@ -365,7 +365,7 @@ export default function TimeRequestTabs() {
     setActionLoading(s => ({ ...s, [id]: true }));
     try {
       const opts = getAuthOptions();
-      const res = await fetch(`${API_BASE}/time-requests/${id}/`, {
+      const res = await fetch(`${API_BASE_URL}/time-requests/${id}/`, {
         method: "PATCH",
         ...opts,
         body: JSON.stringify({ status: statusVal }),
@@ -408,7 +408,7 @@ export default function TimeRequestTabs() {
     setActionLoading(s => ({ ...s, [r.id]: true }));
     try {
       const opts = getAuthOptions();
-      const res = await fetch(`${API_BASE}/time-requests/${r.id}/`, {
+      const res = await fetch(`${API_BASE_URL}/time-requests/${r.id}/`, {
         method: "DELETE",
         ...opts,
       });
@@ -560,9 +560,9 @@ export default function TimeRequestTabs() {
   return (
     <>
       <div className="container-fluid px-sm-0 py-4">
-        <div className="d-flex align-items-center justify-content-between mb-4">
+        <div className="d-flex align-items-center justify-content-between mb-4 ">
           <h2>Time Request</h2>
-          <Button onClick={openAdd}>+ Add Request</Button>
+          <button className="g-btn" onClick={openAdd}>+ Add Request</button>
         </div>
 
         <div className="row mb-4 g-4">
@@ -574,7 +574,7 @@ export default function TimeRequestTabs() {
                   {c.svg}
                 </div>
                 <div className="count">
-                  <h5 className="mb-0 fw-bold">{c.count}</h5>
+                  <h5 className={`mb-0 fw-bold ${c.textClass}`}>{c.count}</h5>
                 </div>
               </div>
             </div>
@@ -607,7 +607,7 @@ export default function TimeRequestTabs() {
       </div>
 
       <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Form onSubmit={handleSubmit}>
+        <Form className="g-modal-conntent-wrapper" onSubmit={handleSubmit}>
           <Modal.Header closeButton>
             <Modal.Title>{editRequest ? "Edit Request" : "Add Request"}</Modal.Title>
           </Modal.Header>
@@ -676,12 +676,12 @@ export default function TimeRequestTabs() {
             </Row>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>
+            <button className="g-btn" type="button" onClick={() => setShowModal(false)}>
               Cancel
-            </Button>
-            <Button variant="primary" type="submit">
+            </button>
+            <button className="g-btn" type="submit">
               {editRequest ? "Update" : "Add"}
-            </Button>
+            </button>
           </Modal.Footer>
         </Form>
       </Modal>

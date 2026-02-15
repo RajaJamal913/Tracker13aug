@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from 'react';
 
 interface Task {
   id: number;
@@ -25,6 +25,8 @@ interface ProjectMap {
   [id: number]: string;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 export default function MyTaskPage() {
   const [humanTasks, setHumanTasks] = useState<Task[]>([]);
   const [aiTasks, setAiTasks] = useState<Task[]>([]);
@@ -35,28 +37,35 @@ export default function MyTaskPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+
     const load = async () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem('token');
       if (!token) {
-        setGeneralError("You must be logged in to view your tasks.");
+        setGeneralError('You must be logged in to view your tasks.');
         setLoading(false);
         return;
       }
 
-      const humanUrl = "http://localhost:8000/api/tasks/my/";
-      const aiUrl = "http://localhost:8000/api/tasksai/my/";
+      const humanUrl = `${API_BASE_URL}/api/tasks/my/`;
+      const aiUrl = `${API_BASE_URL}/api/tasksai/my/`;
 
-      const fetchAndParse = async (url: string) => {
+      const fetchJson = async (url: string) => {
         const res = await fetch(url, {
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Token ${token}`,
           },
+          signal,
         });
+
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
-            throw new Error("Authentication failed. Please log in again.");
+            throw new Error('Authentication failed. Please log in again.');
           }
           throw new Error(`Request failed (${res.status})`);
         }
@@ -64,41 +73,37 @@ export default function MyTaskPage() {
       };
 
       try {
-        const results = await Promise.allSettled([
-          fetchAndParse(humanUrl),
-          fetchAndParse(aiUrl),
-        ]);
+        setLoading(true);
+        setGeneralError(null);
 
-        if (results[0].status === "fulfilled") {
+        const results = await Promise.allSettled([fetchJson(humanUrl), fetchJson(aiUrl)]);
+
+        // human
+        if (results[0].status === 'fulfilled') {
           setHumanTasks(results[0].value as Task[]);
         } else {
-          setHumanError(results[0].reason?.message ?? "Failed to load tasks.");
+          setHumanError(results[0].reason?.message ?? 'Failed to load tasks.');
         }
 
-        if (results[1].status === "fulfilled") {
-          const aiData = results[1].value as Task[];
-          setAiTasks(aiData);
-          if (Array.isArray(aiData) && aiData.length > 0) {
-            // debug sample shape if you need to inspect
-            // eslint-disable-next-line no-console
-            console.debug("Sample AI task shape:", aiData[0]);
-          }
+        // ai
+        if (results[1].status === 'fulfilled') {
+          setAiTasks(results[1].value as Task[]);
         } else {
-          setAiError(results[1].reason?.message ?? "Failed to load AI tasks.");
+          setAiError(results[1].reason?.message ?? 'Failed to load AI tasks.');
         }
 
-        // Collect project ids from both sets (robust)
+        // collect project ids
         const combined = [
-          ...(results[0].status === "fulfilled" ? results[0].value : []),
-          ...(results[1].status === "fulfilled" ? results[1].value : []),
+          ...(results[0].status === 'fulfilled' ? results[0].value : []),
+          ...(results[1].status === 'fulfilled' ? results[1].value : []),
         ] as Task[];
 
         const extractProjectId = (t: Task): number | null => {
           if (!t) return null;
           const pAny = (t as any).project ?? (t as any).project_id ?? null;
           if (pAny == null) return null;
-          if (typeof pAny === "number") return pAny;
-          if (typeof pAny === "object" && pAny !== null && typeof (pAny as any).id === "number") return (pAny as any).id;
+          if (typeof pAny === 'number') return pAny;
+          if (typeof pAny === 'object' && pAny !== null && typeof (pAny as any).id === 'number') return (pAny as any).id;
           return null;
         };
 
@@ -106,52 +111,79 @@ export default function MyTaskPage() {
           new Set(
             combined
               .map(extractProjectId)
-              .filter((pid): pid is number => typeof pid === "number" && !isNaN(pid))
+              .filter((pid): pid is number => typeof pid === 'number' && !isNaN(pid))
           )
         );
 
+        // attempt batch fetch if API supports ?ids=1,2,3 pattern
         const map: ProjectMap = {};
-        await Promise.all(uniqueIds.map(async pid => {
+        if (uniqueIds.length > 0) {
           try {
-            const res = await fetch(`http://localhost:8000/api/projects/${pid}/`, {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Token ${token}`,
-              },
+            const batchUrl = `${API_BASE_URL}/api/projects/?ids=${uniqueIds.join(',')}`;
+            const pjRes = await fetch(batchUrl, {
+              headers: { Authorization: `Token ${token}` },
+              signal,
             });
-            if (!res.ok) throw new Error(`Failed to fetch project ${pid}`);
-            const pj = await res.json();
-            map[pid] = pj.name ?? pj.title ?? `Project #${pid}`;
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn(`Error loading project ${pid}:`, err);
-            map[pid] = `Project #${pid}`;
+            if (pjRes.ok) {
+              const pjJson = await pjRes.json();
+              // support both array or paginated
+              const items = Array.isArray(pjJson) ? pjJson : pjJson.results ?? [];
+              items.forEach((p: any) => {
+                if (p && typeof p.id === 'number') map[p.id] = p.name ?? p.title ?? `Project #${p.id}`;
+              });
+            } else {
+              // fallback to individual fetches
+              throw new Error('Batch fetch not supported');
+            }
+          } catch (batchErr) {
+            // individual fetches (parallel) with graceful fallback
+            await Promise.all(uniqueIds.map(async pid => {
+              try {
+                const res = await fetch(`${API_BASE_URL}/api/projects/${pid}/`, {
+                  headers: { Authorization: `Token ${token}` },
+                  signal,
+                });
+                if (!res.ok) throw new Error(`Failed to fetch project ${pid}`);
+                const pj = await res.json();
+                map[pid] = pj.name ?? pj.title ?? `Project #${pid}`;
+              } catch (err) {
+                // don't fail whole flow for a single project
+                // eslint-disable-next-line no-console
+                console.warn(`Error loading project ${pid}:`, err);
+                map[pid] = `Project #${pid}`;
+              }
+            }));
           }
-        }));
+        }
+
         setProjectNames(map);
       } catch (err: any) {
         // eslint-disable-next-line no-console
-        console.error("Unexpected error loading tasks:", err);
-        setGeneralError(err?.message ?? "An unknown error occurred.");
+        console.error('Unexpected error loading tasks:', err);
+        setGeneralError(err?.message ?? 'An unknown error occurred.');
       } finally {
-        setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     };
 
     load();
+
+    return () => {
+      abortRef.current?.abort();
+    };
   }, []);
 
   const firstNonEmpty = (...vals: Array<any>) => {
     for (const v of vals) {
       if (v === null || v === undefined) continue;
-      if (typeof v === "string" && v.trim() === "") continue;
+      if (typeof v === 'string' && v.trim() === '') continue;
       return v;
     }
     return null;
   };
 
   const formatDate = (raw?: string | null) => {
-    if (!raw) return "—";
+    if (!raw) return '—';
     try {
       const d = new Date(raw);
       if (isNaN(d.getTime())) return raw;
@@ -163,10 +195,10 @@ export default function MyTaskPage() {
 
   const getProjectId = (task: Task): number | null => {
     if (!task) return null;
-    if (typeof task.project_id === "number") return task.project_id;
+    if (typeof task.project_id === 'number') return task.project_id;
     const p = (task as any).project;
-    if (typeof p === "number") return p;
-    if (typeof p === "object" && p !== null && typeof p.id === "number") return p.id;
+    if (typeof p === 'number') return p;
+    if (typeof p === 'object' && p !== null && typeof p.id === 'number') return p.id;
     return null;
   };
 
@@ -176,7 +208,7 @@ export default function MyTaskPage() {
     const pid = getProjectId(task);
     if (pid && projectNames[pid]) return projectNames[pid];
     if (pid) return `Project #${pid}`;
-    return "—";
+    return '—';
   };
 
   const getDueDate = (task: Task) => {
@@ -185,58 +217,59 @@ export default function MyTaskPage() {
   };
 
   if (loading) return <p>Loading…</p>;
-  if (generalError) return <p style={{ color: "red" }}>{generalError}</p>;
+  if (generalError) return <p style={{ color: 'red' }}>{generalError}</p>;
 
   const renderTable = (title: string, rows: Task[], endpointError: string | null, prefixKey: string) => {
     return (
-      <section style={{ marginBottom: "1.5rem" }}>
-        <h4 style={{ marginBottom: "0.5rem" }}>{title} ({rows.length})</h4>
-        {endpointError && <p style={{ color: "orange" }}>Error: {endpointError}</p>}
+      <section style={{ marginBottom: '1.5rem' }}>
+        <h4 style={{ marginBottom: '0.5rem' }}>{title} ({rows.length})</h4>
+        {endpointError && <p style={{ color: 'orange' }}>Error: {endpointError}</p>}
         {rows.length === 0 ? (
           <p>No tasks found.</p>
         ) : (
+          <div className="table-responsive my-4">
+            <table className="table g-table" style={{ minWidth: '1000px', marginTop: '0.25rem' }}>
+              <thead>
+                <tr>
+                  {['Project', 'Title', 'Due Date', 'Priority'].map(h => (
+                    <th key={h} style={{ padding: '0.5rem' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(task => {
+                  const projectLabel = getProjectLabel(task);
+                  const due = getDueDate(task);
+                  const priority = firstNonEmpty(task.priority, (task as any).prio) ?? '—';
+                  const rowKey = `${prefixKey}-${task.id}`;
 
-<div className="table-responsive my-4">
-  <table className="table g-table" style={{ minWidth: "1000px", marginTop: "0.25rem" }}>
-            <thead>
-              <tr>
-                {["Project", "Title", "Due Date", "Priority"].map(h => (
-                  <th key={h} style={{ padding: "0.5rem" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(task => {
-                const projectLabel = getProjectLabel(task);
-                const due = getDueDate(task);
-                const priority = firstNonEmpty(task.priority, (task as any).prio) ?? "—";
-                const rowKey = `${prefixKey}-${task.id}`;
-
-                return (
-                  <tr key={rowKey}>
-                    <td style={{ padding: "0.5rem" }}>{projectLabel}</td>
-                    <td style={{ padding: "0.5rem" }}>{task.title ?? "—"}</td>
-                    <td style={{ padding: "0.5rem" }}>{due}</td>
-                    <td style={{ padding: "0.5rem" }}>{priority}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-</div>
-
-          
+                  return (
+                    <tr key={rowKey}>
+                      <td style={{ padding: '0.5rem' }}>{projectLabel}</td>
+                      <td style={{ padding: '0.5rem' }}>{task.title ?? '—'}</td>
+                      <td style={{ padding: '0.5rem' }}>{due}</td>
+                      <td style={{ padding: '0.5rem' }}>{priority}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     );
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
+    <div style={{ padding: '1rem' }}>
       <h3>My Assigned Tasks</h3>
 
-      {renderTable("Human Tasks", humanTasks, humanError, "human")}
-      {renderTable("AI Tasks", aiTasks, aiError, "ai")}
+      {renderTable('Human Tasks', humanTasks, humanError, 'human')}
+      {renderTable('AI Tasks', aiTasks, aiError, 'ai')}
+
+      <div style={{ marginTop: 12 }}>
+        <small style={{ color: '#666' }}>API base: {API_BASE_URL}</small>
+      </div>
     </div>
   );
 }

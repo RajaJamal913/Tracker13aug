@@ -2,10 +2,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { apiConfig } from "@/lib/config";
 import "bootstrap/dist/css/bootstrap.min.css";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000/";
-const API_BASE = `${API_BASE_URL}api/`;
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +24,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/password-reset/request/`, {
+      const res = await fetch(`${apiConfig.auth.passwordReset}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: cleaned }),
